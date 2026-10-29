@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<!-- 幻歌鸟调色盘 · Gengoetori Palette
+     © 2026 TouhouGakurin / 幻歌鸟与风声之乐 · MIT License
+     https://github.com/TouhouGakurin/gengoetori-palette -->
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="author" content="TouhouGakurin">
+<meta name="description" content="幻歌鸟调色盘 Gengoetori Palette —— 融合 Scale Color 与 Scale Chord 学习的音阶色彩实验室：60 个音阶 × 12 个主音，和弦、四部和声、进行台、调式地图、导出与打印。">
+<meta name="keywords" content="音阶,调式,和弦,四部和声,视唱练耳,作曲,Scale Color,Scale Chord,Gengoetori Palette">
+<meta name="theme-color" content="#14181e">
+<link rel="icon" type="image/png" sizes="64x64" href="assets/icon-mark-64.png">
+<link rel="apple-touch-icon" href="assets/icon-128.png">
+<title>幻歌鸟调色盘 · Gengoetori Palette</title>
+<style>
+#map .node .hit{fill:transparent;stroke:none;pointer-events:all}
+#map .node .hit:hover{cursor:pointer}
+#map{cursor:grab;touch-action:none;user-select:none}
+#map.dragging{cursor:grabbing}
+@font-face{
+  font-family:"Bravura";
+  src:url("fonts/Bravura.otf") format("opentype");
+  font-weight:400; font-style:normal; font-display:block;
+}
+:root{
+  --bg:#0f1117; --panel:#171a22; --panel2:#1d2129; --line:#2a2f3a;
+  --txt:#e9ecf2; --dim:#8b93a5; --dim2:#5f6779;
+  --accent:#6fc3ff; --accent-soft:rgba(111,195,255,.14); --accent-line:rgba(111,195,255,.45);
+  --warm:#ffb86b; --good:#7ee0a8; --bad:#ff8f7a;
+  --stylec:#9fd0ff; --styleline:#3d6d94; --moodc:#ffd28a; --moodline:#7a5f2e;
+  --shadow:0 6px 24px rgba(0,0,0,.35);
+  --radius:12px;
+}
+html[data-theme="light"]{
+  --bg:#f4f6f9; --panel:#ffffff; --panel2:#f7f9fc; --line:#e0e5ee;
+  --txt:#161a22; --dim:#5f6777; --dim2:#98a0b0;
+  --accent:#1f7fd0; --accent-soft:rgba(31,127,208,.10); --accent-line:rgba(31,127,208,.40);
+  --warm:#c46d13; --good:#1d8a52; --bad:#c0392b;
+  --stylec:#1a6ea8; --styleline:#a9cce8; --moodc:#8a5a12; --moodline:#e0c49b;
+  --shadow:0 6px 22px rgba(20,30,50,.10);
+}
+/* UI 主色（设置面板里选）：只覆盖 --accent 与它的淡底，其余色不动 */
+html[data-accent="violet"]{--accent:#b18cff;--accent-soft:rgba(177,140,255,.15);--accent-line:rgba(177,140,255,.45)}
+html[data-accent="mint"]{--accent:#4fdcae;--accent-soft:rgba(79,220,174,.14);--accent-line:rgba(79,220,174,.42)}
+html[data-accent="amber"]{--accent:#ffc45e;--accent-soft:rgba(255,196,94,.14);--accent-line:rgba(255,196,94,.42)}
+html[data-accent="rose"]{--accent:#ff9db8;--accent-soft:rgba(255,157,184,.14);--accent-line:rgba(255,157,184,.42)}
+html[data-theme="light"][data-accent="violet"]{--accent:#6842c4;--accent-soft:rgba(104,66,196,.10);--accent-line:rgba(104,66,196,.38)}
+html[data-theme="light"][data-accent="mint"]{--accent:#0d7a56;--accent-soft:rgba(13,122,86,.10);--accent-line:rgba(13,122,86,.38)}
+html[data-theme="light"][data-accent="amber"]{--accent:#96600a;--accent-soft:rgba(150,96,10,.10);--accent-line:rgba(150,96,10,.38)}
+html[data-theme="light"][data-accent="rose"]{--accent:#b02b5c;--accent-soft:rgba(176,43,92,.10);--accent-line:rgba(176,43,92,.38)}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--txt);
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:7px 12px;transition:.15s}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.ghost{background:transparent}
+button.primary{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.hidden{display:none!important}
+/* 导出反馈 */
+#toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,14px);z-index:90;
+  background:var(--panel);color:var(--txt);border:1px solid var(--accent);border-radius:10px;
+  padding:9px 16px;font-size:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.22s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+.top{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel);
+  flex-wrap:wrap;
+}
+.brand{display:flex;align-items:baseline;gap:10px;font-weight:650;font-size:16px;letter-spacing:.3px}
+.brand .mark{width:24px;height:24px;border-radius:7px;align-self:center;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+.brand .sub{font-weight:400;font-size:12px;color:var(--dim2);letter-spacing:0}
+.tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+.tonic{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+.tonic>label{color:var(--dim);font-size:12px;letter-spacing:.5px}
+.notes{display:flex;gap:6px;flex-wrap:wrap}
+.note{
+  min-width:46px;padding:8px 0;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel2);text-align:center;font-weight:600;font-size:13px;
+}
+.note.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+/* 顶栏与主音条作为一个整体吸顶：滚到地图、进行台时仍然知道当前主音 */
+.chrome{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line)}
+.chrome .top,.chrome .tonic{position:static}
+.tools button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.libtoggle{display:none}
+section[id],[id^="sec"]{scroll-margin-top:120px}
+/* 模块视图：详情区一次只显示一个模块；左栏音阶库始终保留 */
+.detail>section{display:none}
+.detail>section.on{display:block;margin:18px 0 0}
+body:not([data-view="scale"]) .detail>:not(section){display:none}
+@media print{ body:not([data-view="scale"]) .detail>:not(section){display:block} }
+
+.wrap{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;padding:18px 22px 6px}
+.sitefoot{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;justify-content:center;
+  padding:14px 22px 22px;font-size:11px;color:var(--dim2);letter-spacing:.3px}
+.sitefoot .sf-name{color:var(--dim);font-weight:600}
+.sitefoot .sf-name i{font-style:normal;font-weight:400;letter-spacing:.6px;color:var(--dim2)}
+.sitefoot b{font-weight:600;color:var(--dim)}
+.sitefoot .sf-sep{opacity:.45}
+@media print{ .sitefoot{padding:10mm 0 0} }
+
+.lib{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 210px)}
+/* 窄窗：音阶库收成抽屉，正文不再被 420px 高的列表挤到屏幕外 */
+@media (max-width:980px){
+  .wrap{grid-template-columns:1fr}
+  .libtoggle{display:inline-block}
+  .lib{position:fixed;left:0;top:0;bottom:0;width:min(86vw,380px);z-index:45;max-height:none;
+    border-radius:0 14px 14px 0;border-left:0;transform:translateX(-102%);
+    transition:transform .22s ease;box-shadow:var(--shadow)}
+  .lib.open{transform:none}
+  .libscrim{position:fixed;inset:0;z-index:44;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s}
+  .libscrim.on{opacity:1;pointer-events:auto}
+}
+@media (min-width:981px){ .libscrim{display:none} }
+@media (prefers-reduced-motion:reduce){ .lib{transition:none} }
+.libhead{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line)}
+.libhead input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px;outline:none}
+.libhead input:focus{border-color:var(--accent)}
+.libhead select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 6px;outline:none}
+.list{overflow:auto;flex:1;padding:6px}
+.grp{font-size:11px;color:var(--dim2);letter-spacing:1px;padding:12px 8px 4px;text-transform:uppercase}
+.grpnote{font-weight:400;opacity:.6;margin-left:6px;letter-spacing:0;text-transform:none}
+.row{
+  display:grid;grid-template-columns:22px minmax(0,1fr) auto auto auto;gap:6px;align-items:center;
+  padding:6px 8px;border-radius:9px;border:1px solid transparent;cursor:pointer;
+}
+.row:hover{background:var(--panel2)}
+.row.a{border-color:var(--accent);background:var(--accent-soft)}
+.row.b{border-color:var(--warm)}
+.row.a.b{border-color:var(--accent)}
+.rk{font-size:11px;color:var(--dim2);text-align:right;font-variant-numeric:tabular-nums}
+.nm{min-width:0;overflow:hidden}
+.nm1{display:flex;align-items:baseline;gap:6px;min-width:0;white-space:nowrap}
+.nm b{font-weight:600;flex:0 0 auto}
+.nm i{font-style:normal;color:var(--dim);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm .sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:10.5px;font-weight:400;
+  color:var(--dim2);letter-spacing:.2px;margin-top:2px;line-height:1.45;overflow:hidden;white-space:normal}
+.tag{font-size:10px;padding:1px 5px;border-radius:20px;border:1px solid var(--line);color:var(--dim);white-space:nowrap;max-width:6.4em;overflow:hidden;text-overflow:ellipsis}
+.tag.warn{color:var(--bad);border-color:var(--bad)}
+.tag.off{visibility:hidden}
+.pick{font-size:10px;padding:2px 6px;border-radius:6px;line-height:1.4;color:var(--dim2)}
+.pick.on{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+.pick.onB{color:var(--bg);background:var(--warm);border-color:var(--warm)}
+
+.detail{min-width:0}
+
+/* ---------- 打印：只留当前这一页的谱例，工具栏与其它面板全部收起 ---------- */
+@media print{
+  html[data-theme], html[data-theme][data-accent]{
+    --bg:#fff; --panel:#fff; --panel2:#fff; --line:#c9ced8; --txt:#14171c; --dim:#3f4550;
+    --dim2:#5c636f; --accent:#0b5c9e; --accent-soft:rgba(11,92,158,.08); --accent-line:rgba(11,92,158,.40); --warm:#8a4a00; --good:#14603a; --bad:#8f2015;
+    --shadow:none; --stylec:#1a6ea8; --styleline:#a9cce8; --moodc:#8a5a12; --moodline:#e0c49b;
+  }
+  body{background:#fff;color:#14171c}
+  header.top, section.tonic, aside.lib, #secMap, #secMorph, #secDeck, #secQuiz, #secMidi,
+  section.cmp, .expseg, .deckstaffbar, .actions, .tunerow, .strip, .staffbar .seg, .pentaopts,
+  #stripLabel, .vseg, .freqline, .hint{display:none!important}
+  .wrap{display:block!important;padding:0;gap:0}
+  .detail{padding:0}
+  .staffbox{border:0;background:#fff}
+  .staffwrap{border:0;background:#fff;padding:0}
+  .card, .badge, .staffbox, .nearlist{break-inside:avoid}
+  .cards{grid-template-columns:repeat(4,1fr)}
+  .mhead h2{font-size:20px}
+  @page{margin:14mm 12mm}
+}
+.mhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.mhead h2{margin:0;font-size:22px;letter-spacing:.2px}
+.mhead h2 small{font-size:13px;color:var(--dim);font-weight:400;margin-left:8px}
+.badges{display:flex;gap:6px;flex-wrap:wrap}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+.badge.acc{color:var(--accent);border-color:var(--accent)}
+.badge.mono{font-family:ui-monospace,Consolas,monospace;letter-spacing:.5px}
+button.ghost.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.badge.warm{color:var(--warm);border-color:var(--warm)}
+.badge.style{color:var(--stylec);border-color:var(--styleline)}
+.badge.mood{color:var(--moodc);border-color:var(--moodline)}
+.revnote{margin:10px 0 0;padding:9px 12px;border-left:3px solid var(--bad);background:var(--panel2);border-radius:0 8px 8px 0;color:var(--dim);font-size:12.5px}
+.aboutline{margin:8px 0 2px;color:var(--dim);font-size:12.5px;line-height:1.65;max-width:88ch}
+.aboutline b{color:var(--dim2);font-weight:600}
+.aboutline .src{color:var(--accent);font-weight:600}
+
+.striplabel{font-size:11px;color:var(--dim2);letter-spacing:1px;margin:16px 0 7px}
+.strip{display:grid;grid-template-columns:repeat(13,1fr);gap:4px}
+.cell{position:relative;padding:9px 0 7px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);text-align:center;cursor:pointer;transition:.12s;overflow:hidden}
+.cell:hover{transform:translateY(-2px)}
+.cell .deg{font-size:11px;color:var(--accent);font-weight:700;height:15px}
+.cell .nm{font-size:12px;color:var(--dim2);font-weight:600}
+.cell:not(.in){opacity:.45}
+.cell.in{opacity:1;background:var(--accent-soft);border-color:var(--accent-line)}
+.cell.in .nm{color:var(--txt)}
+.cell.tonic{box-shadow:inset 0 -3px 0 var(--accent)}
+.cell .tick{position:absolute;left:0;right:0;bottom:0;height:2px;background:transparent}
+.cell.black .tick{background:var(--dim2);opacity:.35}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.chk{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:12.5px}
+
+.cardshead{font-size:11px;color:var(--dim2);letter-spacing:1px;margin:20px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tunerow{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:12px 0 0;font-size:12px;color:var(--dim2)}
+.tunerow .tgroup{display:flex;align-items:center;gap:6px}
+.tunerow .tbtn{padding:2px 9px;font-size:11.5px;min-width:30px}
+.tunerow .tbtn.on{border-color:var(--accent);color:var(--accent)}
+.tunerow b{color:var(--txt);font-variant-numeric:tabular-nums;min-width:22px;text-align:center}
+.tunerow input{width:66px;padding:3px 6px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font:inherit;font-size:12px}
+.tunerow .tnote{color:var(--dim);font-size:11px}
+.freqline{font-size:11px;color:var(--dim);margin-top:7px;line-height:2;letter-spacing:.2px}
+.freqline b{color:var(--dim2);font-weight:600}
+.freqline .fq{white-space:nowrap;margin-right:9px}
+.tunerow .tunseg button{padding:2px 10px;font-size:11.5px}
+.charline{font-size:11.5px;color:var(--dim2);margin-top:4px;letter-spacing:.2px}
+.charline b{color:var(--warm);font-weight:600;letter-spacing:1px}
+.charline .ck{display:inline-block;margin-right:7px;padding:1px 7px;border-radius:20px;
+  border:1px solid var(--line);color:var(--dim);font-size:10.5px}
+.svstaff .nh.hi{fill:var(--warm)}
+.svstaff .ch{transition:opacity .08s}
+.svstaff .ch.hl .nh{fill:var(--accent)}
+.svstaff .ch.hl .st{stroke:var(--accent)}
+.svstaff .ch.hl .acc{fill:var(--accent)}
+.cardshead .seg button{padding:3px 10px;font-size:11px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
+.card{
+  border:1px solid var(--line);background:var(--panel);border-radius:11px;padding:10px 10px 9px;
+  cursor:pointer;transition:.12s;position:relative;overflow:hidden;
+}
+.card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.card:active{transform:translateY(0)}
+.card .deg{font-size:11px;color:var(--dim);letter-spacing:.5px}
+.card .nm{font-size:14px;font-weight:650;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .nt{font-size:11.5px;color:var(--dim2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card.tonic-card{border-color:var(--accent-line)}
+.card .qc{position:absolute;top:8px;right:8px;font-size:9.5px;color:var(--dim2)}
+
+.nearest{margin:18px 0 0}
+
+/* 借来的和弦：两组小卡，点一下试听并把谱面切过去 */
+.borrowsec{margin:22px 0 6px}
+.borrowrow{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.borrowgroup{flex:0 1 auto;max-width:100%}
+.bghead{display:flex;align-items:baseline;gap:8px;margin:2px 0 7px}
+.bghead b{font-size:12px;font-weight:650;color:var(--fg)}
+.bghead i{font-style:normal;font-size:10.5px;color:var(--dim2)}
+.bgrid{display:flex;gap:6px;flex-wrap:wrap}
+.bch{
+  border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:6px 9px 5px;
+  cursor:pointer;transition:.12s;text-align:left;color:inherit;font:inherit;min-width:96px;position:relative;
+}
+.bch .add{position:absolute;top:1px;right:1px;width:15px;height:15px;line-height:13px;text-align:center;
+  border-radius:4px;font-size:11px;font-style:normal;color:var(--dim2);opacity:0;transition:opacity .12s}
+.bch:hover .add{opacity:1}
+.bch .add:hover{background:var(--accent);color:#08111c}
+.bch:hover{border-color:var(--accent);transform:translateY(-1px)}
+.bch.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.bch b{display:block;font-size:11px;color:var(--dim);font-weight:500;letter-spacing:.3px}
+.bch u{display:block;font-size:13px;font-weight:650;text-decoration:none;margin-top:1px}
+.bch s{display:block;font-size:10.5px;color:var(--dim2);text-decoration:none;margin-top:2px;white-space:nowrap}
+.bch.sec b{color:var(--warm)}
+.bempty{font-size:11px;color:var(--dim2);padding:6px 2px}
+
+.nearlist{display:flex;gap:8px;flex-wrap:wrap}
+.nr{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px;cursor:pointer;min-width:150px}
+.nr:hover{border-color:var(--accent)}
+.nr b{display:block;font-size:13px}
+.nr span{font-size:11px;color:var(--dim2)}
+
+.cmp{margin:18px 22px 30px;border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:14px 16px}
+.cmphead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.cmpsel{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cmpsel select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 8px}
+.cmpsel span{color:var(--dim2);font-size:12px}
+.cmpbody{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:12px}
+.box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.box h4{margin:0 0 6px;font-size:11px;color:var(--dim2);letter-spacing:1px;font-weight:600}
+.box p{margin:0;font-size:13px;word-break:break-word}
+.box .big{font-size:20px;font-weight:700;color:var(--accent)}
+.box .mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+
+.panel{margin:18px 22px 0;border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:14px 16px}
+.phead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.phead h3{margin:0;font-size:14px;font-weight:650;letter-spacing:.2px}
+.phead h3 small{font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
+.hint{color:var(--dim2);font-size:11.5px;margin:8px 0 0;line-height:1.7}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+
+#map{width:100%;height:auto;display:block;background:var(--panel2);border-radius:10px;border:1px solid var(--line)}
+#map .edge{stroke:var(--line);stroke-width:1}
+#map .edge.d0{stroke:var(--accent);stroke-opacity:.45}
+#map .node{cursor:pointer}
+#map .node circle:not(.hit){fill:var(--panel);stroke-width:1.4;transition:.15s}
+#map .node text{fill:var(--dim);font-size:9px;text-anchor:middle;pointer-events:none;font-family:ui-monospace,Consolas,monospace}
+#map .node:hover circle{fill:var(--accent-soft)}
+#map .node.sel circle:not(.hit){fill:var(--accent);stroke:var(--accent)}
+#map .node.sel text{fill:var(--txt);font-weight:700}
+#map .node{transition:opacity .3s}
+#map .vec{stroke-width:1.6;stroke-dasharray:5 4;animation:vecdash 1.6s linear infinite}
+#map .ahead{stroke:none}
+#map .veclab{fill:var(--dim);font-size:8px;text-anchor:middle;font-family:ui-monospace,Consolas,monospace;opacity:.75}
+#map .selhalo{stroke-width:1.2;stroke-opacity:.5;stroke-dasharray:3 4}
+#map .ring{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:2 6;opacity:.75}
+#map .ringlab{fill:var(--dim);font-size:8px;opacity:.6;font-family:ui-monospace,Consolas,monospace}
+@keyframes vecdash{to{stroke-dashoffset:-18}}
+@media (prefers-reduced-motion: reduce){#map .vec{animation:none}}
+
+.morphbody{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px}
+@media (max-width:900px){ .morphbody{grid-template-columns:1fr} }
+.mrow{display:grid;grid-template-columns:44px minmax(90px,1fr) 34px 56px 62px;gap:10px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--line)}
+.mrow:last-child{border-bottom:0}
+.mrow .d{color:var(--dim2);font-size:11.5px;letter-spacing:.5px}
+.mrow .n{font-weight:600;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.mrow input.rg{width:100%;height:18px;accent-color:var(--accent);cursor:pointer;background:transparent}
+.mrow .v{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--dim);text-align:center}
+.mrow .v.act{color:var(--accent);font-weight:700}
+.mrow .s{font-size:11px;color:var(--dim2)}
+.mres{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 13px;align-self:start}
+.mres h4{margin:0 0 6px;font-size:11px;color:var(--dim2);letter-spacing:1px;font-weight:600}
+.mres .big{font-size:16px;font-weight:650;margin:2px 0 4px;line-height:1.35}
+.mres .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--dim)}
+.mres p{margin:6px 0 0;font-size:12px;color:var(--dim2);line-height:1.6}
+
+.staffwrap{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;overflow-x:auto;display:block;max-width:940px;margin:0 auto}
+#staff,#deckStaff{display:block;max-width:none;height:auto;margin:0 auto}
+.svstaff text{font-family:Bravura,"Bravura Text",serif}
+.svstaff .sl{stroke:currentColor;stroke-width:1.3;opacity:.55;stroke-linecap:butt}
+.svstaff .bl{stroke:currentColor;stroke-width:1.6;opacity:.8;stroke-linecap:butt}
+.svstaff .bl2{stroke:currentColor;stroke-width:3.4;opacity:.9;stroke-linecap:butt}
+.svstaff .led{stroke:currentColor;stroke-width:1.6;opacity:.6;stroke-linecap:butt}
+.svstaff .st{stroke:currentColor;stroke-width:1.2;opacity:.85;stroke-linecap:butt}
+.svstaff .nh{fill:currentColor;font-size:40px}
+.svstaff .clef{fill:currentColor;font-size:40px}
+.svstaff .ksig,.svstaff .acc{fill:currentColor;font-size:40px}
+.svstaff .ts,.svstaff .rst,.svstaff .dot{fill:currentColor;font-size:40px}
+.svstaff .tie{fill:currentColor;opacity:.85}
+.svstaff .brc{fill:currentColor;font-size:40px;opacity:.95}
+/* 直连谱号两端的短横：只描边不填色 */
+.svstaff .brk{fill:none;stroke:currentColor;stroke-width:1.3;opacity:.9;stroke-linecap:round}
+.svstaff .lab,.svstaff .cnm{font-family:ui-sans-serif,system-ui,"Microsoft YaHei",sans-serif;text-anchor:middle;fill:currentColor;opacity:.72;font-size:11px}
+.staffbox{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:8px 10px 10px;margin:12px 0}
+.staffbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.staffbox .staffwrap{border:0;background:transparent;padding:0;max-width:none}
+.expseg{margin-left:auto}
+.expseg button{padding:3px 9px;font-size:11px;letter-spacing:.4px}
+.deckstaffbar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.deckstaffbar .striplabel{margin:0}
+.deckstaffbar .seg{margin-left:auto}
+.deckstaffbar button{padding:3px 9px;font-size:11px;letter-spacing:.4px}
+.seg{display:flex;gap:6px}
+.hint2{font-size:11.5px;color:var(--dim2)}
+.chordbox{background:var(--panel2)}
+.chordbox .staffwrap{justify-content:center}
+.chordbox .staffbar{justify-content:flex-start}
+.chordbox .hint2{margin-left:auto}
+.csctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.csctl .seg button{padding:3px 9px;font-size:11px}
+.csctl .seg button[disabled]{opacity:.3;cursor:default}
+.badge.majc{color:#f0c069;border-color:rgba(240,192,105,.45)}
+.badge.domc{color:#e08b5a;border-color:rgba(224,139,90,.5)}
+.badge.minc{color:#8ea6ff;border-color:rgba(142,166,255,.45)}
+.ct{font-size:10px;padding:1px 5px;border-radius:6px;border:1px solid var(--line);color:var(--dim2);line-height:1.5}
+.ct.M{color:#f0c069;border-color:rgba(240,192,105,.45)}
+.ct.m{color:#8ea6ff;border-color:rgba(142,166,255,.45)}
+.card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+
+.deck{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+@media (max-width:1100px){ .deck{grid-template-columns:repeat(4,minmax(0,1fr))} }
+.slot{min-height:62px;border:1px dashed var(--line);border-radius:10px;background:var(--panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:6px 4px;font-size:12px;color:var(--dim2);transition:.12s}
+.slot.over{border-color:var(--accent);background:var(--accent-soft)}
+.slot.filled{border-style:solid;border-color:var(--line);color:var(--txt);cursor:grab}
+.slot.filled:active{cursor:grabbing}
+.slot .r{font-size:10.5px;color:var(--dim2)}
+.slot .c{font-weight:650;font-size:13px}
+.slot.playing{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.dragging{opacity:.4}
+
+.slot.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.slot .tag{font-size:10px;color:var(--dim2);letter-spacing:.3px}
+.slot.rest{border-style:solid;border-color:var(--line);opacity:.78}
+.slot.rest .c{font-weight:600;color:var(--dim)}
+.deckmeter{color:var(--accent);white-space:nowrap}
+.deckoct{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:8px;padding:1px 3px}
+.deckoct b{font-size:12px;color:var(--accent);min-width:20px;text-align:center;font-variant-numeric:tabular-nums}
+.deckoct button{padding:2px 7px;line-height:1.2}
+.deckoct button:disabled{opacity:.35;cursor:default}
+.slot .tag.dim{opacity:.55}
+.satbnote{font-size:12px;color:#f0a04b;margin-left:8px}
+.deckedit{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.deckedit.hidden{display:none}
+.derow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 借来的和弦：编辑区只留「时值 + 删除」，来源音阶/级数这些对它没意义 */
+.deckedit .exrow{display:none}
+.deckedit.exmode .derow{display:none}
+.deckedit.exmode .exrow{display:flex}
+.deckedit .exrow b{font-weight:600;color:var(--accent)}
+.slot.ex{border-style:solid;border-color:var(--accent);background:linear-gradient(180deg,var(--accent-soft),transparent)}
+.svstaff .warn{fill:var(--bad);stroke:none}
+.delab{font-size:11.5px;color:var(--dim2);min-width:52px}
+.desel{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:12px;max-width:260px}
+.deseg{display:inline-flex;gap:5px;flex-wrap:wrap}
+.deseg button{border:1px solid var(--line);background:var(--panel);color:var(--dim);border-radius:8px;padding:4px 9px;font-size:12px;cursor:pointer}
+.deseg button:hover{border-color:var(--accent);color:var(--txt)}
+.deseg button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:650}
+.deprev{margin-left:auto;font-size:12.5px;color:var(--txt)}
+.deprev .dim2{color:var(--dim2);margin-left:8px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.chiprow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:5px 10px;font-size:12px;cursor:grab}
+.chip:hover{border-color:var(--accent)}
+.chip b{font-weight:650}
+.chip span{color:var(--dim2);margin-left:5px;font-size:11px}
+.quizbody{display:flex;flex-direction:column;gap:10px}
+.qopts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.qopt{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);text-align:left;line-height:1.4}
+.qopt small{display:block;color:var(--dim2);font-size:11px;margin-top:2px}
+.qopt.ok{border-color:var(--good);color:var(--good)}
+.qopt.ok small{color:var(--good);opacity:.8}
+.qopt.no{border-color:var(--bad);color:var(--bad)}
+.qopt.no small{color:var(--bad);opacity:.8}
+.qbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qstat{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12.5px}
+
+footer{padding:8px 22px 28px;color:var(--dim2);font-size:11.5px;line-height:1.8}
+footer code{color:var(--dim);font-family:ui-monospace,Consolas,monospace}
+
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--txt);max-width:640px;padding:0;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dlgbody{padding:20px 22px 8px}
+.dlgbody h3{margin:0 0 12px;font-size:16px}
+.dlgbody ol{margin:0;padding-left:20px;color:var(--dim);font-size:13px;line-height:1.85}
+.dlgbody ol b{color:var(--txt)}
+.dlgfoot{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 22px 18px}
+.dlgfoot button{flex:0 0 auto;white-space:nowrap}
+.credit{flex:1 1 160px;min-width:0;font-size:11px;line-height:1.5;color:var(--dim2);letter-spacing:.2px}
+
+/* 设置面板 */
+#setDlg{max-width:560px}
+.dlgtitle{display:flex;align-items:center;gap:10px}
+.dlgtitle .dlgmark{width:38px;height:38px;border-radius:10px;box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+.setsec{padding:2px 0 10px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.setsec:last-of-type{border-bottom:0}
+.sethead{font-size:11px;letter-spacing:1.5px;color:var(--dim2);text-transform:uppercase;margin:6px 0 8px}
+.setrow{display:flex;align-items:center;gap:12px;padding:5px 0;min-height:32px}
+.setlab{flex:0 0 74px;font-size:12.5px;color:var(--dim);letter-spacing:.3px}
+.setrow .seg{display:flex;gap:6px;flex-wrap:wrap}
+.setrow .seg button{font-size:12px;padding:4px 10px;border-radius:8px;background:transparent}
+.setrow .seg button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:650}
+.setrow select{font-size:12.5px;padding:4px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+.setrow .num{width:72px;font-size:13px;padding:4px 8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  font-variant-numeric:tabular-nums;text-align:right}
+.setrow .unit{font-size:12px;color:var(--dim2);margin-left:-6px}
+.setrow .mini{display:flex;gap:5px}
+.setrow .mini button{font-size:11.5px;padding:3px 8px}
+.setrow .sw{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dim);cursor:pointer}
+.setrow .sw input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.swatches{display:flex;gap:8px}
+.swatches button{width:26px;height:26px;border-radius:50%;padding:0;border:2px solid var(--line);cursor:pointer;position:relative}
+.swatches button.on{border-color:var(--txt);box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
+.sethint{margin:2px 0 0;font-size:11.5px;color:var(--dim2);line-height:1.6}
+.setver{font-size:12px;color:var(--dim2);font-variant-numeric:tabular-nums}
+.setsec{margin:16px 0 0;padding-top:14px;border-top:1px solid var(--accent-line)}
+.setsec-h{font-size:12px;font-weight:600;letter-spacing:.12em;color:var(--dim2);margin:0 0 6px}
+.setbtns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+.setbtns .ghost.danger{color:#e0757a;border-color:rgba(224,117,122,.4)}
+.sitefoot .sf-ver{font-variant-numeric:tabular-nums;opacity:.8}
+.timbredesc{margin:2px 0 0 86px;font-size:11.5px;color:var(--dim2);min-height:16px}
+
+/* 中国五声：旋宫 + 偏音（只在五声出现） */
+.pentaopts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:8px 0 2px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.pentaopts .pgrp{display:flex;align-items:center;gap:5px}
+.pentaopts .plab{font-size:11.5px;color:var(--dim2);letter-spacing:.5px;margin-right:2px}
+.pentaopts button{font:inherit;font-size:12px;padding:3px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--dim2);cursor:pointer;transition:.12s}
+.pentaopts button:hover{color:var(--txt)}
+.pentaopts button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+
+/* 焦点可见：键盘用户要能看到自己在哪个控件上（放在最后，盖过各处 outline:none） */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.libhead input:focus-visible,.libhead select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.list:focus-visible{outline:2px solid var(--accent-line);outline-offset:-2px}
+</style>
+</head>
+<body data-view="scale">
+
+<div class="chrome">
+<header class="top">
+  <div class="brand"><img class="mark" src="assets/icon-mark.png" alt="">幻歌鸟调色盘<span class="sub" id="brandSub"></span></div>
+  <div class="tools">
+    <button class="ghost libtoggle" id="btnLib" aria-controls="libPanel" aria-expanded="false">目录</button>
+    <button class="ghost" data-mod="scale">音阶</button>
+    <button class="ghost" data-mod="compare">对比</button>
+    <button class="ghost" data-mod="map">地图</button>
+    <button class="ghost" data-mod="morph">变形</button>
+    <button class="ghost" data-mod="deck">进行台</button>
+    <button class="ghost" data-mod="quiz">测验</button>
+    <button class="ghost" data-mod="midi">MIDI</button>
+    <button class="ghost" id="btnDoc">数据说明</button>
+    <button class="ghost" id="btnSet">设置</button>
+    <button class="ghost" id="btnTheme">浅色</button>
+  </div>
+</header>
+
+<section class="tonic">
+  <label>主音</label>
+  <div class="notes" id="tonicBar"></div>
+</section>
+</div>
+
+<div class="wrap">
+  <aside class="lib" id="libPanel">
+    <div class="libhead">
+      <input id="search" placeholder="搜索：dorian / 多利亚 / 凯尔特">
+      <select id="sortSel">
+        <option value="rank">亮度序</option>
+        <option value="color">按色彩</option>
+        <option value="parent">按来源</option>
+        <option value="style">按风格</option>
+        <option value="dist">按距离</option>
+      </select>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+  <div class="libscrim" id="libScrim"></div>
+
+  <main class="detail">
+    <div class="mhead">
+      <h2 id="mTitle"></h2>
+      <div class="badges" id="mBadges"></div>
+      <div class="pentaopts hidden" id="pentaOpts"></div>
+    </div>
+    <div class="aboutline" id="mNote"></div>
+
+    <div class="staffbox">
+      <div class="staffbar">
+        <span class="striplabel" id="staffKey"></span>
+        <span class="seg">
+          <button class="ghost on" id="btnStaffScale">音阶</button>
+          <button class="ghost" id="btnStaffChords">七个和弦</button>
+        </span>
+        <span class="seg expseg"><button class="ghost" data-exp="staff" data-kind="svg" title="导出为 SVG（矢量，可在 Illustrator / Inkscape 里改）">SVG</button><button class="ghost" data-exp="staff" data-kind="png" title="导出为 PNG（位图，发到别处也不会缺字体）">PNG</button></span>
+      </div>
+      <div class="staffwrap"><svg id="staff" class="svstaff" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+
+    <div class="striplabel" id="stripLabel">半音槽位（点一下发声）</div>
+    <div class="strip" id="strip"></div>
+
+    <div class="actions">
+      <button id="btnScale">▶ 播放音阶</button>
+      <button id="btnProg">▶ 播放七个和弦</button>
+      <button id="btnTonic">▶ 主和弦</button>
+      <label class="chk"><input type="checkbox" id="arp"> 分解</label>
+    </div>
+
+    <div class="tunerow">
+      <span class="tgroup">八度
+        <button class="ghost tbtn" id="octDown" title="整体降八度">−</button>
+        <b id="octLbl">0</b>
+        <button class="ghost tbtn" id="octUp" title="整体升八度">+</button>
+        <span class="tnote" id="octNote"></span>
+      </span>
+      <span class="tgroup">A4
+        <input id="a4In" type="number" min="400" max="480" step="0.1" value="440" title="参考音 A4 频率">
+        <span class="tnote">Hz</span>
+      </span>
+      <span class="tgroup">
+        <button class="ghost tbtn" data-a4="432">432</button>
+        <button class="ghost tbtn" data-a4="440">440</button>
+        <button class="ghost tbtn" data-a4="442">442</button>
+        <button class="ghost tbtn" data-a4="444">444</button>
+      </span>
+      <span class="tgroup">
+        <button class="ghost tbtn" id="btnDrone" title="在主音上垫一个持续音，听音阶时不容易跑调">持续主音</button>
+      </span>
+      <span class="tgroup">律制
+        <span class="seg tunseg">
+          <button class="ghost on" data-tuning="et" title="十二平均律：钢琴、DAW 的默认">平均律</button>
+          <button class="ghost" data-tuning="just" title="纯律：以主音为参照，三度比平均律低 14 音分">纯律</button>
+        </span>
+      </span>
+    </div>
+    <div class="freqline" id="freqLine"></div>
+    <div class="charline" id="charLine"></div>
+
+    <div class="cardshead">
+      <span id="cardsTitle">七个和弦 · 在音阶内叠三度</span>
+      <span class="seg vseg">
+        <button class="ghost" data-v="3">三和弦</button>
+        <button class="ghost on" data-v="7">七和弦</button>
+      </span>
+    </div>
+    <div class="cards" id="cards"></div>
+
+    <div class="staffbox chordbox">
+      <div class="staffbar">
+        <span class="striplabel" id="chordStaffKey">选中和弦</span>
+        <div class="csctl">
+          <div class="seg" id="segSpread">
+            <button class="ghost on" data-spread="close">密集</button><button class="ghost" data-spread="open">开放</button>
+          </div>
+          <div class="seg" id="segInv">
+            <button class="ghost on" data-inv="0">原位</button><button class="ghost" data-inv="1">一转</button><button class="ghost" data-inv="2">二转</button><button class="ghost" data-inv="3">三转</button>
+          </div>
+        </div>
+        <span class="hint2" id="chordStaffHint">点上面的和弦卡试听，这里同步画出它的谱面</span>
+        <span class="seg expseg"><button class="ghost" data-exp="chord" data-kind="svg" title="导出为 SVG（矢量，可在 Illustrator / Inkscape 里改）">SVG</button><button class="ghost" data-exp="chord" data-kind="png" title="导出为 PNG（位图，发到别处也不会缺字体）">PNG</button></span>
+      </div>
+      <div class="staffwrap"><svg id="chordStaff" class="svstaff" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+
+    <div class="nearest">
+      <div class="striplabel">最接近的三个调式</div>
+      <div class="nearlist" id="nearList"></div>
+    </div>
+
+    <section class="borrowsec">
+      <div class="cardshead">
+        <span>借来的和弦</span>
+        <span class="hint2" id="borrowHint">本音阶的七个和弦之外，写作时最常借的两种</span>
+      </div>
+      <div class="borrowrow">
+        <div class="borrowgroup">
+          <div class="bghead"><b id="borrowFromTitle">同主音小调</b><i>平行调借用</i></div>
+          <div class="bgrid" id="borrowGrid"></div>
+        </div>
+        <div class="borrowgroup">
+          <div class="bghead"><b>副属和弦</b><i>V7 / 级数</i></div>
+          <div class="bgrid" id="secondGrid"></div>
+        </div>
+      </div>
+    </section>
+<section class="cmp" id="secCmp">
+  <div class="cmphead">
+    <div class="striplabel" style="margin:0">A / B 对比</div>
+    <div class="cmpsel">
+      <select id="selA"></select>
+      <span>vs</span>
+      <select id="selB"></select>
+      <button id="btnAB">▶ 试听差异</button>
+    </div>
+  </div>
+  <div class="cmpbody" id="cmpBody"></div>
+</section>
+
+<section class="panel" id="secMap">
+  <div class="phead">
+    <h3>调式地图 <small>亮线相连 = 只差一个音；点节点切换</small></h3>
+    <div class="legend" id="mapLegend"></div>
+  </div>
+  <svg id="map" viewBox="0 0 920 540" preserveAspectRatio="xMidYMid meet"></svg>
+  <p class="hint">亮线 = 两者只差一个音（距离 2），暗线 = 差两个音以内。挨在一起、线又亮的，就是最容易互相替代的两条调式。节点位置由「半音差异 + 三全音差 + 主和弦性质差」自动排布，每次打开都一样。<b>滚轮缩放 · 按住拖动平移 · 双击回到当前调式。</b></p>
+</section>
+
+<section class="panel" id="secMorph">
+  <div class="phead">
+    <h3>变形滑杆 <small>把某一级升降半音，看它变成谁</small></h3>
+    <button class="ghost" id="btnMorphReset">还原</button>
+  </div>
+  <div class="morphbody">
+    <div id="morphRows"></div>
+    <div class="mres" id="morphRes"></div>
+  </div>
+</section>
+
+<section class="panel" id="secDeck">
+  <div class="phead">
+    <h3>进行台 <small>拖和弦卡进槽位 · 拖槽位换顺序</small></h3>
+    <div class="qbar">
+      <span class="seg vseg">
+        <button class="ghost" data-v="3">三和弦</button>
+        <button class="ghost on" data-v="7">七和弦</button>
+      </span>
+      <span class="delab">拍号</span>
+      <select id="deckMeter" class="desel"></select>
+      <span class="delab">八度</span>
+      <span class="deckoct">
+        <button class="ghost" id="deckOctDown" title="整条进行降一个八度">−</button>
+        <b id="deckOctVal">0</b>
+        <button class="ghost" id="deckOctUp" title="整条进行升一个八度">+</button>
+      </span>
+      <button class="ghost" id="btnDeckPlay">▶ 播放</button>
+      <button class="ghost" id="btnDeckClear">清空</button>
+      <button class="ghost" id="btnDeckMidi">导出 .mid</button>
+      <button class="ghost" id="btnSatb">四部和声</button>
+      <button class="ghost" id="btnFour">四行谱</button>
+      <label class="chk">循环 <input type="checkbox" id="deckLoop" checked></label>
+    </div>
+  </div>
+  <div class="deck" id="deck"></div>
+  <div class="chiprow" id="deckChips"></div>
+  <div class="deckedit hidden" id="deckEdit">
+    <div class="derow exrow" id="deExRow">
+      <span class="delab">借来的和弦</span>
+      <b id="deExName"></b>
+      <span class="delab">时值</span>
+      <span class="deseg" id="deExDur"></span>
+      <button class="ghost" id="deExDel">删除槽位</button>
+    </div>
+    <div class="derow">
+      <span class="delab">来源音阶</span>
+      <select id="deMode" class="desel"></select>
+      <span class="delab">级数</span>
+      <span class="deseg" id="deDeg"></span>
+    </div>
+    <div class="derow">
+      <span class="delab">音数</span>
+      <span class="deseg" id="deSize"></span>
+      <span class="delab">排列</span>
+      <span class="deseg" id="deSpread"></span>
+      <span class="delab">转位</span>
+      <span class="deseg" id="deInv"></span>
+    </div>
+    <div class="derow">
+      <span class="delab">时值</span>
+      <span class="deseg" id="deDur"></span>
+      <span class="delab">内容</span>
+      <span class="deseg" id="deKind"></span>
+      <span class="deprev" id="deBars"></span>
+    </div>
+    <div class="derow">
+      <span class="delab">试听</span>
+      <button class="ghost" id="dePlay">▶ 这个和弦</button>
+      <button class="ghost" id="deDel">删除槽位</button>
+      <span class="deprev" id="dePreview"></span>
+    </div>
+  </div>
+  <div class="deckstaffbar">
+    <span class="striplabel">谱面</span>
+    <span class="seg"><button class="ghost" data-exp="deck" data-kind="svg" title="导出为 SVG（矢量，可在 Illustrator / Inkscape 里改）">SVG</button><button class="ghost" data-exp="deck" data-kind="png" title="导出为 PNG（位图，发到别处也不会缺字体）">PNG</button></span>
+  </div>
+  <div class="staffwrap" id="deckStaffWrap" style="margin-top:6px"><svg id="deckStaff" class="svstaff" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <p class="hint" id="deckHint"></p>
+</section>
+
+<section class="panel" id="secQuiz">
+  <div class="phead">
+    <h3>听辨测验 <small>听一段音阶与主和弦，选出调式</small></h3>
+    <div class="qbar">
+      <span class="qstat" id="quizScore">0 / 0</span>
+      <button class="ghost" id="btnQuizPlay">▶ 听题</button>
+      <button class="primary" id="btnQuizNew">下一题</button>
+    </div>
+  </div>
+  <div class="quizbody" id="quizBody"></div>
+</section>
+
+<section class="panel" id="secMidi">
+  <div class="phead">
+    <h3>导出 MIDI <small>拖进 Cubase 直接改音色</small></h3>
+    <div class="qbar">
+      <label class="chk">速度 <input id="midiBpm" type="number" value="96" min="40" max="240" style="width:62px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 6px"></label>
+      <button id="btnMidiScale">音阶 .mid</button>
+      <button id="btnMidiChords">和弦 .mid</button>
+      <button id="btnMidiAll">音阶 + 和弦</button>
+    </div>
+  </div>
+  <p class="hint" id="midiHint"></p>
+</section>
+
+  </main>
+</div>
+
+<footer>
+  数据：每条音阶记的是<b>来源</b>（哪个传统/地域/理论体系）与<b>性质</b>（色彩、常用级数、标志性音程），音级只是最后的结果。<br>
+  音级名、七个和弦、距离全部由音高集合推导 —— 所以 #2 不会被写成 b3，和弦性质也不会抄错。<br>
+  和弦 = 在音阶内每隔一音叠三次；距离 = 音集对称差 + 0.5×三全音数差 + 0.5×主和弦性质差异。
+</footer>
+
+<dialog id="dlg">
+  <div class="dlgbody">
+    <h3>音阶数据是怎么组织的</h3>
+    <p style="color:var(--dim);font-size:13px;line-height:1.7;margin:0 0 12px">
+      这里存的不是一张音级对照表，而是 60 条有出处的音乐语汇。每条只写五样东西：
+    </p>
+    <ol>
+      <li><b>来源</b>：教会调式、旋律小调体系、和声小调体系、和声大调体系、那不勒斯与降二调式、爵士与布鲁斯、民族与地域、对称音阶 —— 共 8 个来源。</li>
+      <li><b>旋法</b>：如果一个来源是成套的七声体系，记下它是第几个旋法；单条音阶则没有。</li>
+      <li><b>风格与色彩感受</b>：这条音阶在现实里最常出现在哪种乐种或地域（凯尔特、哥特、爵士、中国、中东……），以及听到它的第一印象（明亮、幽静、苦涩、诡谲……）—— 列表右侧的小圆角标签是风格，第二行末尾是色彩感受。</li>
+      <li><b>性质</b>：它在写作里扮演什么角色 —— 色彩（大 / 小 / 属 / 增三 / 双三度 / 无三度）、常用级数、标志性音程，以及自动算出的结构特征（对称、含增二度、没有半音……）。</li>
+      <li><b>音级</b>：相对主音的半音集合，放在最后 —— 它是上面几项的结果，不是定义。</li>
+    </ol>
+    <p style="color:var(--dim2);font-size:12px;margin:12px 0 0">
+      音级名、各级和弦、调号、四部和声都由音高集合实时推导；每条音阶在列表里显示「来源 · 色彩 · 色彩感受」加风格标签，在标题下显示一句话出处。
+    </p>
+  </div>
+  <div class="dlgfoot"><span class="credit">图标：東方Project 同人 · 画师 小旗 · © 上海アリス幻樂団</span><button class="primary" id="dlgClose">知道了</button></div>
+</dialog>
+
+<dialog id="setDlg">
+  <div class="dlgbody">
+    <h3 class="dlgtitle"><img class="dlgmark" src="assets/icon-mark.png" alt="">设置</h3>
+
+    <div class="setsec">
+      <div class="sethead">声音</div>
+      <div class="setrow">
+        <span class="setlab">音色</span>
+        <div class="seg" id="setTimbre"></div>
+      </div>
+      <div class="timbredesc" id="setTimbreHint"></div>
+      <div class="setrow">
+        <span class="setlab">律制</span>
+        <div class="seg" id="setTuning"></div>
+      </div>
+      <div class="setrow">
+        <span class="setlab">A4</span>
+        <input class="num" id="setA4" type="number" min="400" max="480" step="1">
+        <span class="unit">Hz</span>
+        <div class="mini" id="setA4Presets"></div>
+      </div>
+      <div class="setrow">
+        <span class="setlab">持续主音</span>
+        <label class="sw"><input type="checkbox" id="setDrone"><span>垫在主音上当调性锚点</span></label>
+      </div>
+      <div class="setrow">
+        <span class="setlab">试听</span>
+        <button class="ghost" id="setPreview">听一下这个音色</button>
+      </div>
+    </div>
+
+    <div class="setsec">
+      <div class="sethead">界面</div>
+      <div class="setrow">
+        <span class="setlab">主题</span>
+        <div class="seg" id="setTheme"></div>
+      </div>
+      <div class="setrow">
+        <span class="setlab">主色</span>
+        <div class="swatches" id="setAccent"></div>
+      </div>
+
+      <div class="setrow">
+        <span class="setlab">版本</span>
+        <span class="setver">v__VERSION__ · 单文件 Web 应用 · 代码 MIT</span>
+      </div>
+    </div>
+
+    <div class="setsec">
+      <div class="setsec-h">数据与备份</div>
+      <p class="sethint" id="dataWhere">数据位置：读取中…</p>
+      <p class="sethint" id="dataSize"></p>
+      <div class="setbtns">
+        <button class="ghost" id="dataExport" type="button">导出备份…</button>
+        <button class="ghost" id="dataImport" type="button">导入备份…</button>
+        <button class="ghost danger" id="dataReset" type="button">恢复出厂…</button>
+        <input type="file" id="dataFile" accept=".json,application/json" hidden>
+      </div>
+    </div>
+
+    <p class="sethint">
+      设置立即生效，存在这台机器的浏览器里（换浏览器或清缓存会重置）。A4 与律制同时影响试听、进行台播放与 <code>.mid</code> 的音高换算。
+      桌面版把这份设置与进行台存在 <code>userdata\</code>（便携模式）或 <code>%LOCALAPPDATA%\GengoetoriPalette</code>（普通模式）里。
+    </p>
+  </div>
+  <div class="dlgfoot">
+    <span class="credit">图标：東方Project 同人 · 画师 小旗 · © 上海アリス幻樂団</span>
+    <button class="ghost" id="setReset">恢复默认</button>
+    <button class="primary" id="setClose">完成</button>
+  </div>
+</dialog>
+
+<footer class="sitefoot">
+  <span class="sf-name">幻歌鸟调色盘 <i>Gengoetori Palette</i></span>
+  <span class="sf-sep">·</span>
+  <span class="sf-by">© 2026 <b>TouhouGakurin</b> · 幻歌鸟与风声之乐</span>
+  <span class="sf-sep">·</span>
+  <span class="sf-lic">代码 MIT</span>
+  <span class="sf-sep">·</span>
+  <span class="sf-lic">图标：東方Project 同人二次创作（画师 小旗）</span>
+  <span class="sf-sep">·</span>
+  <span class="sf-ver">v__VERSION__</span>
+</footer>
+
+<script>
+/*@JS*/
+</script>
+</body>
+</html>
