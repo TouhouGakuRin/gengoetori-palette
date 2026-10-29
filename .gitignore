@@ -1,0 +1,36 @@
+# 构建产物
+# index.html 是提交进仓库的（网页版双击即用），所以不忽略
+
+# 正式产物与本地归档：不进仓库
+release/
+archive/
+
+# 打包中间产物
+packaging-webview2/out/
+packaging-webview2/out-*/
+packaging-webview2/_nuget/
+packaging-webview2/*.zip
+
+# 依赖与缓存
+node_modules/
+.cache/
+
+# 临时与调试
+.tmp-*
+*.log
+*.tmp
+_*.cjs
+._*
+
+# 本地小工具（推送脚本等，只留在这台机器上）
+推送到GitHub.bat
+notes/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+out-dev/
