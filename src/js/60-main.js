@@ -70,7 +70,6 @@ document.addEventListener("click", (e) => {
   if(!b) return;
   if(b.dataset.pen !== undefined){ switchMode(b.dataset.pen); return; }
   if(b.dataset.model !== undefined) store.set("pentaChord", b.dataset.model);
-  else if(b.dataset.rot !== undefined) store.set("rot5", +b.dataset.rot);
   else if(b.dataset.b4 !== undefined) store.set("b4", +b.dataset.b4);
   else if(b.dataset.b7 !== undefined) store.set("b7", +b.dataset.b7);
   else return;

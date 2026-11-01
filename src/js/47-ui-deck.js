@@ -99,14 +99,6 @@ function deckMidis(){
   return raw.map(ms => ms ? ms.map(v => v + sh + oct) : null);
 }
 
-// midi → 五线谱音符（用这个槽自己音阶的拼写）
-function noteOfMidi(midi, sp){
-  const pc = ((midi % 12) + 12) % 12;
-  let k = sp.find(x => ((x.abs % 12) + 12) % 12 === pc);
-  if(!k) k = {li: SHARP_ORDER.indexOf(CHROM_SHARP[pc]) >= 0 ? SHARP_ORDER.indexOf(CHROM_SHARP[pc]) : 0, nacc: 0};
-  const oct = octaveFor(k.li, midi);
-  return {step: k.li + 7*oct, li: k.li, nacc: k.nacc};
-}
 function shortModeName(m){
   return String(m.cn).replace(/[（(].*$/, "").trim().slice(0, 8);
 }

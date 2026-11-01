@@ -169,8 +169,6 @@ async function exportStaff(which, kind){
 
 /* ---------- URL 状态：一个链接复现现场 ---------- */
 
-const HASH_KEYS = ["m", "t", "v", "o", "x", "d2", "mt"];
-
 function hashOfState(){
   const parts = ["m=" + state.A, "t=" + state.tone, "v=" + state.voicing,
     "o=" + (state.oct || 0), "sv=" + URL_CODEC_VERSION];

@@ -5,7 +5,7 @@
 /* ---------- 4. 应用外壳：单例状态 + 视图管线 ---------- */
 
 // state 就是仓库里那个对象：读 state.x 不触发任何事，改值走 store.set(...)
-const store = createStore({ rot5:0, b4:0, b7:0, pentaChord:"tertian", 
+const store = createStore({ b4:0, b7:0, pentaChord:"tertian",
   tone: 0, A: "ion", B: "dor", theme: "dark", chord: 0,
   voicing: "7", oct: 0, a4: 440, inv: 0, spread: "close",
   tuning: "et", drone: false, timbre: "tri", accent: "ice",
