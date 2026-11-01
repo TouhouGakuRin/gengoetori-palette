@@ -24,7 +24,7 @@ const CORE = [
 // core 层只在函数体里读 state（默认值），这里给一个只读桩
 const stateStub = { voicing: "7", inv: 0, spread: "close" };
 
-export function loadCore() {
+export function loadCore(stateOver) {
   const code = CORE.map(f => readFileSync(join(jsDir, f), "utf8")).join("\n");
   const factory = new Function(
     "state",
@@ -32,7 +32,7 @@ export function loadCore() {
       "\nreturn {MODES,TONICS,spell,chordOf,chordVoicing,chordDegrees,chordSize,distance,brightness," +
       "pentaMode,PENTA_NAMES,PENTA_BASE,PENTA_IDS,bestKeySig,keySigName,tritones,buildMidi,octaveFor,noteName,INV_LABEL,IONIAN,degLabel,sizeCap,chordDegreeMax};"
   );
-  return factory(stateStub);
+  return factory(Object.assign({}, stateStub, stateOver));
 }
 
 const ML = loadCore();
@@ -346,4 +346,27 @@ test("pentaMode：同时加清角与变宫，音集与阶名都是清乐商调�
   assert.ok(only4.n.includes("BianZhi") && !only4.n.includes("BianGong"), only4.n);
   const only7 = ML.pentaMode(penS, { rot: 1, b7: 11 });
   assert.ok(only7.n.includes("BianGong") && !only7.n.includes("BianZhi"), only7.n);
+});
+
+/* ---------------- 五声五度叠置：筹码与进行台槽位必须取同一组音 ---------------- */
+
+test("五声五度叠置：显式音数走同一条五度链，槽位默认与筹码一致，三度叠置不受影响", () => {
+  const Q = loadCore({ pentaChord: "quintal", A: "penG" });
+  const penG = Q.MODES.find(m => m.id === "penG");
+  const chip = Q.chordOf(penG, 0);                          // 筹码：默认路径（宫徵商羽）
+  assert.deepEqual(chip.tones, [0, 7, 2, 9], "宫的五度叠置默认应为 C G D A");
+  // 进行台槽位默认音数走 chordSize：必须是 4（四音），且取音与筹码一致
+  const defN = Q.chordSize(penG, "7");
+  assert.equal(defN, 4, "五度叠置时默认音数是 4（三音/四音开关）");
+  assert.deepEqual(Q.chordOf(penG, 0, "7", defN).tones, chip.tones, "槽位默认 == 筹码");
+  // 用户显式选的音数也走五度链：三音 / 五音
+  assert.deepEqual(Q.chordOf(penG, 0, "7", 3).tones, [0, 7, 2]);
+  assert.deepEqual(Q.chordOf(penG, 0, "7", 5).tones, [0, 7, 2, 9, 4]);
+  // 三和弦开关（voicing "3"）默认三音
+  assert.deepEqual(Q.chordOf(penG, 0, "3").tones, [0, 7, 2]);
+  // 三度叠置（tertian）路径完全不受影响
+  const T = loadCore({ pentaChord: "tertian", A: "penG" });
+  assert.deepEqual(T.chordSize(penG, "7"), 3, "三度叠置时五声默认 3 音");
+  assert.deepEqual(T.chordOf(penG, 0, "7", 3).tones, [0, 4, 9]);
+  assert.deepEqual(T.chordOf(penG, 0).tones, [0, 4, 9]);
 });
