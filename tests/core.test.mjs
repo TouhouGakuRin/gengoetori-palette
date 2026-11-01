@@ -370,3 +370,14 @@ test("五声五度叠置：显式音数走同一条五度链，槽位默认与�
   assert.deepEqual(T.chordOf(penG, 0, "7", 3).tones, [0, 4, 9]);
   assert.deepEqual(T.chordOf(penG, 0).tones, [0, 4, 9]);
 });
+
+/* ---------------- 距离百分比封顶 ---------------- */
+
+test("distance：pct 不超过 100（全音阶两种移位这种极端对也要守得住口径）", () => {
+  const wt0 = ML.MODES.find(m => m.id === "wt0"), wt1 = ML.MODES.find(m => m.id === "wt1");
+  assert.ok(ML.distance(wt0, wt1).pct <= 100, `wt0↔wt1 pct=${ML.distance(wt0, wt1).pct}`);
+  const chrom = ML.MODES.find(m => m.id === "chrom");
+  const penG = ML.MODES.find(m => m.id === "penG");
+  assert.ok(ML.distance(chrom, penG).pct <= 100, `chrom↔penG pct=${ML.distance(chrom, penG).pct}`);
+  assert.equal(ML.distance(wt0, wt0).pct, 0);
+});
