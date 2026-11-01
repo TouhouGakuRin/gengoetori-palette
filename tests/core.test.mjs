@@ -331,3 +331,19 @@ test("MIDI：超过 127 字节的中文轨道名用 VLQ 记长度（不能截断
   const got = bytes.slice(i, i + vlen);
   assert.deepEqual([...got], [...enc], "轨道名内容被截断");
 });
+
+/* ---------------- 五声偏音（pentaMode） ---------------- */
+
+test("pentaMode：同时加清角与变宫，音集与阶名都是清乐商调，英文名把两个偏音都列出", () => {
+  const penS = ML.MODES.find(m => m.id === "penS");
+  const v = ML.pentaMode(penS, { rot: 1, b4: 5, b7: 11 });
+  assert.deepEqual(v.pcs, [0, 2, 3, 5, 7, 9, 10], "商调式+清角+变宫应为 C D Eb F G A Bb");
+  assert.equal(v.degNames.join(""), "商角清角徵羽变宫宫");
+  assert.ok(v.n.includes("BianZhi"), `英文名应含 BianZhi：${v.n}`);
+  assert.ok(v.n.includes("BianGong"), `英文名应含 BianGong：${v.n}`);
+  // 单独加一个偏音时英文名照旧
+  const only4 = ML.pentaMode(penS, { rot: 1, b4: 5 });
+  assert.ok(only4.n.includes("BianZhi") && !only4.n.includes("BianGong"), only4.n);
+  const only7 = ML.pentaMode(penS, { rot: 1, b7: 11 });
+  assert.ok(only7.n.includes("BianGong") && !only7.n.includes("BianZhi"), only7.n);
+});

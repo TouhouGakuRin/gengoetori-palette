@@ -281,3 +281,28 @@ test("音频总线：多段计划拼成一份 events 一次 playEvents，全部�
     assert.ok(lastStop > o.startT, `振荡器 start=${o.startT?.toFixed(2)} 被掐到 ${lastStop?.toFixed(2)}`);
   }
 });
+
+/* ---------------- 偏音：baseMode 要把清角/变宫真正接到音集上 ---------------- */
+
+function loadPipeline(){
+  const extra = ["06-ui-registry.js", "40-ui-pipeline.js"];
+  const code = FILES.concat(extra).map(f => readFileSync(join(jsDir, f), "utf8")).join("\n");
+  // 不传 state：40-ui-pipeline 自己 const state = store.all()，并给全工厂作用域
+  const factory = new Function(code + "\nreturn {MODES,state,baseMode,activeMode};");
+  return factory();
+}
+
+test("baseMode：五声的偏音选项真的生效（penS + 清角 + 变宫 = 清乐商调七声）", () => {
+  const P = loadPipeline();
+  P.state.A = "penS";
+  assert.equal(P.baseMode().pcs.length, 5, "无偏音时应是原本的五声");
+  P.state.b4 = 5; P.state.b7 = 11;
+  const m = P.baseMode();
+  assert.deepEqual(m.pcs, [0, 2, 3, 5, 7, 9, 10], "应为 C D Eb F G A Bb（清乐商调）");
+  assert.equal(m.degNames.join(""), "商角清角徵羽变宫宫");
+  assert.equal(m.pentRot, 1, "pentRot 要跟着继承，调号/色彩才判得对");
+  P.state.b4 = 6; P.state.b7 = 0;
+  assert.deepEqual(P.baseMode().pcs, [0, 2, 4, 5, 7, 10], "变徵一侧：C D E F G Bb");
+  P.state.b4 = 0; P.state.b7 = 10;
+  assert.deepEqual(P.baseMode().pcs, [0, 2, 5, 7, 8, 10], "闰一侧：C D F G Ab Bb");
+});

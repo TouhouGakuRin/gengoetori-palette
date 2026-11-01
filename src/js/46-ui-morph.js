@@ -23,9 +23,10 @@ function morphMode(base){
   return Object.assign({}, m, {pcs, morphOf: base ? base.id : m.id});
 }
 
-// 变形后的音高集合（去重排序）——只用于「等于哪个调式」的匹配与试听
+// 变形后的音高集合（去重排序）——只用于「等于哪个调式」的匹配与试听。
+// 用 baseMode 而不是 byId：五声挂了偏音后是 6/7 声，变形行也按那个长度建。
 function morphPcs(){
-  const m = byId(state.A), set = new Set();
+  const m = baseMode(), set = new Set();
   for(let i = 0; i < m.pcs.length; i++) set.add(((m.pcs[i] + (morph.off[i] || 0)) % 12 + 12) % 12);
   return [...set].sort((a, b) => a - b);
 }
