@@ -540,7 +540,9 @@ function pentaMode(base, opts){
     pcs: rows.map(r => r.rel),
     degNames: rows.map(r => r.name),
     cn: `五声 · ${PENTA_NAMES[rot]}调式` + (extra.length ? " · 加" + extra.join("") : ""),
-    n: `Pentatonic — ${["Gong","Shang","Jue","Zhi","Yu"][rot]}` + (extra.length ? " + " + extra.map((_, i) => o.b4 && o.b7 ? (i ? "BianGong" : "BianZhi") : (o.b4 ? "BianZhi" : "BianGong"))[0] : "")
+    // 两侧都加时两个偏音都要写出来（旧写法 .map(...)[0] 只取到第一个）
+    n: `Pentatonic — ${["Gong","Shang","Jue","Zhi","Yu"][rot]}`
+      + (extra.length ? " + " + (o.b4 && o.b7 ? "BianZhi-BianGong" : (o.b4 ? "BianZhi" : "BianGong")) : "")
   });
   // 旋宫换了主音，色彩与自动标签要跟着重算
   out.colorKey = COLOR_KEY[scaleColor(out)];

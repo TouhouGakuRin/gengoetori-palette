@@ -8,15 +8,19 @@
  * 直接 XMLSerializer 出来的文件到别处会丢样式、且 currentColor 无从解析。
  * 所以导出时重新拼一个自包含的 <svg>：内联一份去掉 .svstaff 前缀的样式、
  * 显式给 color 与背景色，再套上外框留白。
+ * Bravura 字体以 base64 内嵌进 <style>（fonts/Bravura.otf 取得到时）——
+ * SVG-as-<img> 与别处打开的 .svg 加载不了外部字体，不内嵌的话没装系统
+ * Bravura 的机器上音符头全是豆腐块。
  *
- * PNG 走「blob URL → <img> → canvas」：比 toDataURL 稳，
- * 且浏览器解析 SVG 时用的是本机已装的 Bravura，所以位图到哪都不会缺字形。
+ * PNG 走「blob URL → <img> → canvas」：比 toDataURL 稳。
  */
 
 const EXPORT_TARGETS = { staff: "#staff", chord: "#chordStaff", deck: "#deckStaff" };
 const EXPORT_PAD = 12;
 
-// 与 shell.html 里 .svstaff 那套规则同源，去掉前缀并把 currentColor 落到具体颜色
+// 与 shell.html 里 .svstaff 那套规则同源，去掉前缀并把 currentColor 落到具体颜色；
+// .brk（直连谱号两端短横）与 .warn（违规红点）以前漏了，导出后会丢样式。
+// @WARN@ 按主题替换（深色 #ff8f7a / 浅色 #c0392b，同 var(--bad)）。
 const EXPORT_CSS = [
   "svg{color:@FG@}",
   'text{font-family:Bravura,"Bravura Text",serif}',
@@ -28,25 +32,58 @@ const EXPORT_CSS = [
   ".nh,.clef,.ksig,.acc,.ts,.rst,.dot{fill:currentColor;font-size:40px}",
   ".tie{fill:currentColor;opacity:.85}",
   ".brc{fill:currentColor;opacity:.95;font-size:40px}",
+  ".brk{fill:none;stroke:currentColor;stroke-width:1.3;opacity:.9;stroke-linecap:round}",
+  ".warn{fill:@WARN@;stroke:none}",
   '.lab,.cnm{font-family:ui-sans-serif,system-ui,"Microsoft YaHei",sans-serif;text-anchor:middle;fill:currentColor;opacity:.72;font-size:11px}',
 ].join("");
 
 function exportPalette(){
   const light = (document.documentElement.dataset.theme || "dark") === "light";
   return light
-    ? { fg:"#14181f", bg:"#ffffff" }
-    : { fg:"#e9edf6", bg:"#14181e" };
+    ? { fg:"#14181f", bg:"#ffffff", warn:"#c0392b" }
+    : { fg:"#e9edf6", bg:"#14181e", warn:"#ff8f7a" };
 }
 
-/* 页面里的谱面 <svg> → 自包含的 SVG 字符串 */
-function staffSnapshot(svg, pal){
+/* Bravura 以 base64 内嵌进导出文件：SVG-as-<img> 和别处打开的 .svg 都加载不了
+   外部字体，没装系统 Bravura 的机器上音符头会缺字形。取不到字体（file:// 的
+   fetch 限制等）就返回空串，退回「依赖本机字体」的现状。结果缓存，只取一次。 */
+let EXPORT_FONT_CSS = null;      // 成功后缓存 @font-face 字符串（失败为 ""）
+let EXPORT_FONT_TRY = null;      // 进行中的 Promise
+
+function exportFontCSS(){
+  if(EXPORT_FONT_CSS !== null) return Promise.resolve(EXPORT_FONT_CSS);
+  if(!EXPORT_FONT_TRY){
+    EXPORT_FONT_TRY = (async () => {
+      try{
+        const res = await fetch("fonts/Bravura.otf");
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const buf = new Uint8Array(await res.arrayBuffer());
+        let bin = "";
+        for(let i = 0; i < buf.length; i += 0x8000)
+          bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        EXPORT_FONT_CSS = '@font-face{font-family:Bravura;src:url(data:font/otf;base64,'
+          + btoa(bin) + ') format("opentype")}';
+      }catch(e){
+        EXPORT_FONT_CSS = "";
+      }
+      return EXPORT_FONT_CSS;
+    })();
+  }
+  return EXPORT_FONT_TRY;
+}
+exportFontCSS();   // 启动预热：等用户点导出时多半已经就绪
+
+/* 页面里的谱面 <svg> → 自包含的 SVG 字符串（含内嵌字体；异步等字体取完） */
+async function staffSnapshot(svg, pal){
   if(!svg) return null;
   pal = pal || exportPalette();
+  const fontCSS = await exportFontCSS();
   const vb = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
   const w = vb[2] || parseFloat(svg.getAttribute("width")) || 320;
   const h = vb[3] || parseFloat(svg.getAttribute("height")) || 120;
   const W = w + EXPORT_PAD * 2, H = h + EXPORT_PAD * 2;
-  const css = EXPORT_CSS.replace(/@FG@/g, pal.fg);
+  const css = (fontCSS ? fontCSS : "")
+    + EXPORT_CSS.replace(/@FG@/g, pal.fg).replace(/@WARN@/g, pal.warn);
   const m = typeof activeMode === "function" ? activeMode() : null;
   const t = typeof tonicObj === "function" ? tonicObj() : null;
   const what = (m ? m.cn : "谱面") + (t ? " · " + noteName(t.li, t.acc) : "");
@@ -109,11 +146,11 @@ function toast(msg){
   toast._t = setTimeout(() => el.classList.remove("on"), 2200);
 }
 
-function exportStaff(which, kind){
+async function exportStaff(which, kind){
   const sel = EXPORT_TARGETS[which];
   const svg = sel ? document.querySelector(sel) : null;
   if(!svg || !svg.innerHTML.trim()){ toast("这张谱面还没有内容"); return; }
-  const text = staffSnapshot(svg);
+  const text = await staffSnapshot(svg);
   if(!text){ toast("导出失败"); return; }
   if(kind === "svg"){
     saveBlob(new Blob([text], { type:"image/svg+xml;charset=utf-8" }), exportName("谱面", "svg"));
@@ -131,8 +168,6 @@ function exportStaff(which, kind){
 }
 
 /* ---------- URL 状态：一个链接复现现场 ---------- */
-
-const HASH_KEYS = ["m", "t", "v", "o", "x", "d2", "mt"];
 
 function hashOfState(){
   const parts = ["m=" + state.A, "t=" + state.tone, "v=" + state.voicing,

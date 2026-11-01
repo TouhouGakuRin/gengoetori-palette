@@ -50,7 +50,8 @@ function setSpread(v){
   store.set("spread", v);
   syncVoicingUI();
   renderStaff(); renderChordStaff();
-  playDegree(byId(state.A), state.chord || 0, tonicObj(), { voiced: true, dur: 0.9 });
+  /* 用 activeMode：变形滑杆动过时，听到的也得是变形后的音（谱面就是它画的） */
+  playDegree(activeMode(), state.chord || 0, tonicObj(), { voiced: true, dur: 0.9 });
 }
 
 function setInv(v){
@@ -58,7 +59,7 @@ function setInv(v){
   store.set("inv", Math.min(Math.max(+v || 0, 0), n - 1));
   syncVoicingUI();
   renderStaff(); renderChordStaff();
-  playDegree(byId(state.A), state.chord || 0, tonicObj(), { voiced: true });
+  playDegree(activeMode(), state.chord || 0, tonicObj(), { voiced: true });
 }
 
 /* 顶部主音条的点击在 45-ui-tonic.js，其余事件集中在这里 */
@@ -69,7 +70,6 @@ document.addEventListener("click", (e) => {
   if(!b) return;
   if(b.dataset.pen !== undefined){ switchMode(b.dataset.pen); return; }
   if(b.dataset.model !== undefined) store.set("pentaChord", b.dataset.model);
-  else if(b.dataset.rot !== undefined) store.set("rot5", +b.dataset.rot);
   else if(b.dataset.b4 !== undefined) store.set("b4", +b.dataset.b4);
   else if(b.dataset.b7 !== undefined) store.set("b7", +b.dataset.b7);
   else return;
@@ -95,7 +95,7 @@ function playScaleMarked(){
 $("#btnScale").onclick = playScaleMarked;
 
 $("#btnTonic").onclick = () => {
-  const m = byId(state.A), t = tonicObj();
+  const m = activeMode(), t = tonicObj();
   state.chord = 0;
   $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === 0));
   renderChordStaff();
@@ -105,8 +105,16 @@ $("#btnTonic").onclick = () => {
 $("#btnProg").onclick = () => {
   const m = activeMode(), t = tonicObj();
   audio();
+  /* 整条进行拼成一份计划一次排上：playEvents 每次都会清总线，
+     逐个 playDegree 会把先排的和弦掐掉，只剩最后一个能听见。 */
+  const o = withTune({ arp: $("#arp").checked });
+  let plan = [];
   for(let i = 0; i < m.pcs.length; i++){
-    playDegree(m, i, t, { when: i * 0.62, dur: 0.4, arp: $("#arp").checked, vel: 0.85, voiced: true });
+    plan = plan.concat(planDegree(m, i, t, Object.assign({}, o, {
+      when: i * 0.62, dur: 0.4, vel: 0.85, voiced: true })));
+  }
+  playEvents(plan, o.a4);
+  for(let i = 0; i < m.pcs.length; i++){
     setTimeout(() => {
       state.chord = i;
       $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === i));
@@ -118,8 +126,10 @@ $("#btnProg").onclick = () => {
 $("#btnAB").onclick = () => {
   const a = byId(state.A), b = byId(state.B), t = tonicObj();
   audio();
-  playDegree(a, 0, t, { dur: 0.9, vel: 0.9 });
-  playDegree(b, 0, t, { when: 1.3, dur: 0.9, vel: 0.9 });
+  /* A 和弦与 B 和弦同一条时间线：分两次 playEvents 会把 A 掐掉 */
+  const o = withTune({});
+  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9 }))
+    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9 }))), o.a4);
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));
   const onlyB = b.pcs.filter(p => !a.pcs.includes(p));
   let w = 2.7;

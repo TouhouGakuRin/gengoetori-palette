@@ -267,3 +267,23 @@ function hash(s) {
   }
   return h.toString(16).padStart(8, "0");
 }
+
+/* ---------- metered 谱面也要带 label / sub / 违规红点（进行台全程走这条路） ---------- */
+
+test("拍号谱面：组的标签 / 和弦记号 / 违规红点画在该组首片的列上", () => {
+  const meter = ML.meterOf("4/4");
+  const r = ML.drawStaff([
+    { label: "I", sub: "Cmaj7", warn: true, dur: 4, notes: ONE },
+    { label: "V7", sub: "G7", dur: 4, notes: ONE },
+  ], { meter, slotW: 104, scale: 1 });
+  assert.equal((r.markup.match(/class="lab"/g) || []).length, 2, "两组各一个级数标签");
+  assert.equal((r.markup.match(/class="cnm"/g) || []).length, 2, "两组各一个和弦记号");
+  assert.equal((r.markup.match(/class="warn"/g) || []).length, 1, "只有违规的那组画红点");
+  assert.ok(r.markup.includes(">I</text>"), "标签内容是 I");
+  assert.ok(r.markup.includes(">V7</text>"), "标签内容是 V7");
+  // 跨小节被切成两片的组：标签只出现一次
+  const r2 = ML.drawStaff([{ label: "I", sub: "Cmaj7", dur: 6, notes: ONE }],
+    { meter, slotW: 104, scale: 1 });
+  assert.equal((r2.markup.match(/class="lab"/g) || []).length, 1, "切两片的长音只画一个标签");
+  assert.equal((r2.markup.match(/class="cnm"/g) || []).length, 1, "切两片的长音只画一个记号");
+});
