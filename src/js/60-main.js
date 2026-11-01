@@ -50,7 +50,8 @@ function setSpread(v){
   store.set("spread", v);
   syncVoicingUI();
   renderStaff(); renderChordStaff();
-  playDegree(byId(state.A), state.chord || 0, tonicObj(), { voiced: true, dur: 0.9 });
+  /* 用 activeMode：变形滑杆动过时，听到的也得是变形后的音（谱面就是它画的） */
+  playDegree(activeMode(), state.chord || 0, tonicObj(), { voiced: true, dur: 0.9 });
 }
 
 function setInv(v){
@@ -58,7 +59,7 @@ function setInv(v){
   store.set("inv", Math.min(Math.max(+v || 0, 0), n - 1));
   syncVoicingUI();
   renderStaff(); renderChordStaff();
-  playDegree(byId(state.A), state.chord || 0, tonicObj(), { voiced: true });
+  playDegree(activeMode(), state.chord || 0, tonicObj(), { voiced: true });
 }
 
 /* 顶部主音条的点击在 45-ui-tonic.js，其余事件集中在这里 */
@@ -95,7 +96,7 @@ function playScaleMarked(){
 $("#btnScale").onclick = playScaleMarked;
 
 $("#btnTonic").onclick = () => {
-  const m = byId(state.A), t = tonicObj();
+  const m = activeMode(), t = tonicObj();
   state.chord = 0;
   $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === 0));
   renderChordStaff();
