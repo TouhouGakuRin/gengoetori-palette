@@ -105,8 +105,16 @@ $("#btnTonic").onclick = () => {
 $("#btnProg").onclick = () => {
   const m = activeMode(), t = tonicObj();
   audio();
+  /* 整条进行拼成一份计划一次排上：playEvents 每次都会清总线，
+     逐个 playDegree 会把先排的和弦掐掉，只剩最后一个能听见。 */
+  const o = withTune({ arp: $("#arp").checked });
+  let plan = [];
   for(let i = 0; i < m.pcs.length; i++){
-    playDegree(m, i, t, { when: i * 0.62, dur: 0.4, arp: $("#arp").checked, vel: 0.85, voiced: true });
+    plan = plan.concat(planDegree(m, i, t, Object.assign({}, o, {
+      when: i * 0.62, dur: 0.4, vel: 0.85, voiced: true })));
+  }
+  playEvents(plan, o.a4);
+  for(let i = 0; i < m.pcs.length; i++){
     setTimeout(() => {
       state.chord = i;
       $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === i));
@@ -118,8 +126,10 @@ $("#btnProg").onclick = () => {
 $("#btnAB").onclick = () => {
   const a = byId(state.A), b = byId(state.B), t = tonicObj();
   audio();
-  playDegree(a, 0, t, { dur: 0.9, vel: 0.9 });
-  playDegree(b, 0, t, { when: 1.3, dur: 0.9, vel: 0.9 });
+  /* A 和弦与 B 和弦同一条时间线：分两次 playEvents 会把 A 掐掉 */
+  const o = withTune({});
+  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9 }))
+    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9 }))), o.a4);
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));
   const onlyB = b.pcs.filter(p => !a.pcs.includes(p));
   let w = 2.7;

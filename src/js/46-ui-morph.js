@@ -137,8 +137,10 @@ function renderMorphResult(){
     <p style="margin-top:10px"><button class="ghost" id="btnMorphPlay">▶ 试听变形后的音阶</button></p>`;
 
   $("#btnMorphPlay").onclick = () => {
-    playScale(fake, t, {pcs});
-    playDegree(fake, 0, t, {when: 2.1, dur: 1.0});
+    /* 音阶 + 主和弦一份计划一次排上，分两次 playEvents 会把音阶掐掉 */
+    const o = withTune({});
+    playEvents(planScale(fake, t, Object.assign({}, o, {pcs}))
+      .concat(planDegree(fake, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0}))), o.a4);
   };
 }
 
