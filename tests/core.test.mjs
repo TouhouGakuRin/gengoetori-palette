@@ -381,3 +381,13 @@ test("distance：pct 不超过 100（全音阶两种移位这种极端对也要�
   assert.ok(ML.distance(chrom, penG).pct <= 100, `chrom↔penG pct=${ML.distance(chrom, penG).pct}`);
   assert.equal(ML.distance(wt0, wt0).pct, 0);
 });
+
+/* ---------------- octaveFor 覆盖 0 组 ---------------- */
+
+test("octaveFor：低音区的 A0/B0 也能标对八度，不再被挤进第 1 组", () => {
+  assert.equal(ML.octaveFor(9, 21), 0, "A0=midi21 应是第 0 组");
+  assert.equal(ML.octaveFor(11, 23), 0, "B0=midi23 应是第 0 组");
+  assert.equal(ML.octaveFor(0, 24), 1, "C1=midi24 应是第 1 组");
+  assert.equal(ML.octaveFor(0, 60), 4, "C4=midi60 应是第 4 组");
+  assert.equal(ML.octaveFor(4, 76), 5, "E5=midi76 应是第 5 组");
+});
