@@ -71,7 +71,7 @@ function midiName(m){ return PITCH_NAMES[m % 12] + (Math.floor(m/12) - 1); }
 
 function octaveFor(li, midi){
   let best = null;
-  for(let o = 1; o <= 8; o++){
+  for(let o = 0; o <= 8; o++){          // 0 组也进搜索：A0/B0(midi 21/23) 不该被挤进第 1 组
     const nat = 12 * (o + 1) + LPC[LETTERS[li]];
     const d = Math.abs(midi - nat);
     if(!best || d < best.d) best = {o, d};

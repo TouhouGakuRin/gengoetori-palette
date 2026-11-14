@@ -352,6 +352,22 @@ function drawStaffMetered(groups, opts){
     }
   });
 
+  /* 组的标签 / 和弦记号 / 违规红点：与 drawStaff 同款，画在该组第一片的列上
+     （跨小节被切成两片的长音只在首片画一次）。进行台全程走 metered 路径，
+     以前这里什么都不画，级数标签与四部和声的违规红点全被吞掉。 */
+  const firstPiece = {};
+  plan.items.forEach((it, i) => {
+    if(firstPiece[it.gi] === undefined) firstPiece[it.gi] = i;
+  });
+  groups.forEach((g, gi) => {
+    const i = firstPiece[gi];
+    if(i === undefined) return;
+    const cx = sh.cols[i].cx;
+    if(g.label) o += `<text class="lab" x="${cx}" y="15">${g.label}</text>`;
+    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${g.sub}</text>`;
+    if(g.warn) o += `<circle class="warn" cx="${cx}" cy="${(g.label ? 3 : 8)}" r="2.6"/>`;
+  });
+
   return {markup: `<g transform="scale(${K})">${o}</g>`, W: W * K, H: H * K, f, cost: ks.cost,
     lineTop: y(TOP), lineBot: y(BOT), x0: sh.x0, xEnd: sh.endX - 3};
 }

@@ -96,7 +96,7 @@ function renderList(env){
   box.querySelectorAll("[data-a]").forEach(el =>
     el.onclick = e => { e.stopPropagation(); switchMode(el.dataset.a); closeLibOnNarrow(); });
   box.querySelectorAll("[data-b]").forEach(el =>
-    el.onclick = e => { e.stopPropagation(); state.B = el.dataset.b; renderAll(); });
+    el.onclick = e => { e.stopPropagation(); store.set("B", el.dataset.b); renderAll(); });
 }
 
 uiRegister("list", renderList);

@@ -5,7 +5,7 @@
 /* ---------- 4. 应用外壳：单例状态 + 视图管线 ---------- */
 
 // state 就是仓库里那个对象：读 state.x 不触发任何事，改值走 store.set(...)
-const store = createStore({ rot5:0, b4:0, b7:0, pentaChord:"tertian", 
+const store = createStore({ b4:0, b7:0, pentaChord:"tertian",
   tone: 0, A: "ion", B: "dor", theme: "dark", chord: 0,
   voicing: "7", oct: 0, a4: 440, inv: 0, spread: "close",
   tuning: "et", drone: false, timbre: "tri", accent: "ice",
@@ -18,11 +18,13 @@ function tonicObj(){ return TONICS[state.tone]; }
 
 // 谱面 / 和弦卡 / 试听都要读「当前生效的音阶」：
 // 变形滑杆动过时就是那个变体，否则就是选中的调式。
-// 只应用「音阶内部选项」（中国五声的旋宫 + 偏音），不含变形滑杆
+// 只应用「音阶内部选项」（中国五声的旋宫 + 偏音），不含变形滑杆。
+// 五声的 id 是 penG…penY，判断用 pentRot（写成 m.id === "pen" 的旧判断永远不成立，
+// 偏音按钮就只剩高亮、音集不动 —— v1.1.4 里整个偏音功能因此失效）。
 function baseMode(){
   const m = byId(state.A);
   if(!m) return m;
-  if(m.id === "pen" && typeof pentaMode === "function"){
+  if(m.pentRot != null && typeof pentaMode === "function"){
     return pentaMode(m, { rot: m.pentRot || 0, b4: state.b4 || 0, b7: state.b7 || 0 });
   }
   return m;

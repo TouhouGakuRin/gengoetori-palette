@@ -25,12 +25,13 @@ function satbCandidates(tones, bassPc, limit){
   const bCands = midiOfPcIn(bass, SATB_RANGE.B);
   if(!bCands.length) return [];
 
-  const root = pcs[0], fifth = pcs[2];
-  const isSev = pcs.indexOf((root + 10) % 12) >= 0 || pcs.indexOf((root + 11) % 12) >= 0;
-  /* 三音和七音是「这个和弦之所以是这个和弦」的音，缺了就是空五度，
-     所以按缺音重罚；三音/七音重复则照旧轻罚。 */
-  const thirdPc = pcs.indexOf((root + 3) % 12) >= 0 ? (root + 3) % 12 : (root + 4) % 12;
-  const sevPc = (root + 11) % 12;
+  const root = pcs[0];
+  /* 五音/三音/七音按音集里实际有什么来判——
+     五度叠置顺序的音集 pcs[2] 不是五音，属七的七音是小七度不是大七度，
+     老的硬编码假设在这两类和弦上都会判错。 */
+  const fifthPc = pcs.find(p => ((p - root) % 12 + 12) % 12 === 7);
+  const thirdPc = pcs.find(p => { const iv = ((p - root) % 12 + 12) % 12; return iv === 3 || iv === 4; });
+  const sevPc = pcs.find(p => { const iv = ((p - root) % 12 + 12) % 12; return iv === 10 || iv === 11; });
   const out = [];
   for(const b of bCands){
     const tOpt = pcs.flatMap(pc => midiOfPcIn(pc, SATB_RANGE.T).filter(m => m > b));
@@ -54,14 +55,13 @@ function satbCandidates(tones, bassPc, limit){
               const iv = ((+p - root) + 12) % 12;
               if(iv === 3 || iv === 4) sc += 6;          // 三音重复
               else if(iv === 10 || iv === 11) sc += 9;   // 七音重复
-              else if(+p === fifth % 12) sc -= 2;        // 重复五音稍好
-              else sc -= 3;                               // 重复根音最好
+              else if(+p === fifthPc) sc -= 2;           // 重复五音稍好
+              else if(+p === root) sc -= 3;              // 重复根音最好
             }
           }
-          if(isSev && dup[((root + 10) % 12)] >= 2) sc += 6;
-          // 缺三音/七音：空五度不成和弦
-          if(!(thirdPc in dup)) sc += 18;
-          if(isSev && !(sevPc in dup)) sc += 18;
+          // 缺三音/七音：空五度不成和弦（音集里本来就没有的，不该罚）
+          if(thirdPc !== undefined && !(thirdPc in dup)) sc += 18;
+          if(sevPc !== undefined && !(sevPc in dup)) sc += 18;
           out.push({S:s, A:a, T:t, B:b, sc});
         }
       }

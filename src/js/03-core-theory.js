@@ -21,7 +21,9 @@ function distance(a, b){
   const qa = chordOf(a,0).sym, qb = chordOf(b,0).sym;
   const qDiff = (qa === qb) ? 0 : 0.5;
   const score = onlyA + onlyB + Math.abs(ta-tb)*0.5 + qDiff;
-  return {onlyA, onlyB, ta, tb, qa, qb, score, pct: Math.round(score/8*100)};
+  /* pct 以 8 分为满分是经验口径，极端对（全音阶两种移位、半音阶对五声）会冲破 100，
+     界面上写的是「/ 100」，这里封顶免得出现 150/100。 */
+  return {onlyA, onlyB, ta, tb, qa, qb, score, pct: Math.min(100, Math.round(score/8*100))};
 }
 
 const SHARP_ORDER = [3,0,4,1,5,2,6];

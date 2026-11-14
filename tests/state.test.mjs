@@ -184,3 +184,125 @@ test("planDegree：非 voiced 时走密集叠三度，音高类与 chordOf 一�
   const pcs = ev.map(e => e.midi % 12).sort((a, b) => a - b);
   assert.deepEqual(pcs, [2, 5, 7, 11]);              // G B D F
 });
+
+/* ---------------- 音频总线：多批次播放不得互相掐断 ---------------- */
+
+// 假 AudioContext：记录每个振荡器的 start 与全部 stop。
+// Web Audio 规范：stop 时刻早于 start 时刻的振荡器一个音都不会响。
+function makeFakeAudio(){
+  const oscs = [];
+  class Param {
+    constructor(v){ this.value = v; }
+    setValueAtTime(v){ this.value = v; }
+    linearRampToValueAtTime(v){ this.value = v; }
+    exponentialRampToValueAtTime(v){ this.value = v; }
+    cancelScheduledValues(){}
+  }
+  class Osc {
+    constructor(){
+      this.frequency = new Param(440);
+      this.startT = undefined;
+      this.stops = [];
+      oscs.push(this);
+    }
+    connect(){}
+    start(t){ this.startT = t; }
+    stop(t){ this.stops.push(t); }
+  }
+  class Gain { constructor(){ this.gain = new Param(1); } connect(){} }
+  class Filt { constructor(){ this.frequency = new Param(1000); this.type = "lowpass"; } connect(){} }
+  class FakeAC {
+    constructor(){ this.currentTime = 0; this.destination = {}; this.state = "running"; }
+    resume(){}
+    createGain(){ return new Gain(); }
+    createOscillator(){ return new Osc(); }
+    createBiquadFilter(){ return new Filt(); }
+  }
+  return { FakeAC, oscs };
+}
+
+// 装载 06-ui-registry + 48-ui-quiz（playQuiz 走的就是用户会踩的那条路）
+function loadAudio(){
+  const extra = ["06-ui-registry.js", "48-ui-quiz.js"];
+  const code = FILES.concat(extra).map(f => readFileSync(join(jsDir, f), "utf8")).join("\n");
+  const factory = new Function(
+    "state",
+    code +
+      "\nreturn {MODES,TONICS,quiz,playQuiz,playEvents,planScale,planDegree,planChord};"
+  );
+  return factory({ voicing: "7", oct: 0, a4: 440, inv: 0, spread: "close",
+    tuning: "et", timbre: "tri", drone: false, chord: 0, pentaChord: "tertian", A: "ion", tone: 0 });
+}
+
+test("playQuiz：音阶与主和弦在同一条时间线上全部出声（后来者不得掐断先来者）", () => {
+  const { FakeAC, oscs } = makeFakeAudio();
+  globalThis.window = { AudioContext: FakeAC, addEventListener(){} };
+  const M = loadAudio();
+  const ion = M.MODES.find(m => m.id === "ion");
+  M.quiz.m = ion; M.quiz.to = 0;
+  M.playQuiz();
+
+  assert.ok(oscs.length >= 20, `应排布音阶(8音×2分音)+主和弦(4音×2分音)，实际 ${oscs.length}`);
+  const recs = oscs.map(o => ({
+    start: o.startT,
+    lastStop: o.stops.length ? o.stops[o.stops.length - 1] : Infinity,   // 规范：最后一次 stop 生效
+    origEnd: o.stops.length ? Math.max(...o.stops) : Infinity,
+  }));
+  const firstScale = Math.min(...recs.map(r => r.start));
+  assert.ok(firstScale < 0.1, `音阶第一音应立刻起振，实际 ${firstScale}`);
+  const chordStarts = recs.filter(r => r.start > 1.9 && r.start < 2.4);
+  assert.ok(chordStarts.length >= 8, "2.1s 处应有主和弦的 8 个分音振荡器");
+  for(const r of recs){
+    assert.ok(r.lastStop > r.start,
+      `振荡器 start=${r.start?.toFixed(2)} 被提前掐到 ${r.lastStop?.toFixed(2)} —— 多批次播放被 stopVoices 误杀`);
+  }
+  // 音阶的音都应活到自己的自然结尾（不被剪成几十毫秒）
+  const scaleRecs = recs.filter(r => r.start < 1.9);
+  for(const r of scaleRecs){
+    assert.ok(r.lastStop >= r.origEnd - 1e-9,
+      `start=${r.start.toFixed(2)} 的音被剪短：原定 ${r.origEnd.toFixed(2)}，实际 ${r.lastStop.toFixed(2)}`);
+  }
+});
+
+test("音频总线：多段计划拼成一份 events 一次 playEvents，全部完整出声（btnProg 的正确形态）", () => {
+  const { FakeAC, oscs } = makeFakeAudio();
+  globalThis.window = { AudioContext: FakeAC, addEventListener(){} };
+  const M = loadAudio();
+  const ion = M.MODES.find(m => m.id === "ion");
+  const c = M.TONICS[0];
+  let plan = [];
+  for(let i = 0; i < 7; i++){
+    plan = plan.concat(M.planDegree(ion, i, c, { when: i * 0.62, dur: 0.4, vel: 0.85, voiced: true }));
+  }
+  M.playEvents(plan, 440);
+  assert.equal(oscs.length, 7 * 4 * 2, "七和弦 × 4 音 × 2 分音");
+  for(const o of oscs){
+    const lastStop = o.stops[o.stops.length - 1];
+    assert.ok(lastStop > o.startT, `振荡器 start=${o.startT?.toFixed(2)} 被掐到 ${lastStop?.toFixed(2)}`);
+  }
+});
+
+/* ---------------- 偏音：baseMode 要把清角/变宫真正接到音集上 ---------------- */
+
+function loadPipeline(){
+  const extra = ["06-ui-registry.js", "40-ui-pipeline.js"];
+  const code = FILES.concat(extra).map(f => readFileSync(join(jsDir, f), "utf8")).join("\n");
+  // 不传 state：40-ui-pipeline 自己 const state = store.all()，并给全工厂作用域
+  const factory = new Function(code + "\nreturn {MODES,state,baseMode,activeMode};");
+  return factory();
+}
+
+test("baseMode：五声的偏音选项真的生效（penS + 清角 + 变宫 = 清乐商调七声）", () => {
+  const P = loadPipeline();
+  P.state.A = "penS";
+  assert.equal(P.baseMode().pcs.length, 5, "无偏音时应是原本的五声");
+  P.state.b4 = 5; P.state.b7 = 11;
+  const m = P.baseMode();
+  assert.deepEqual(m.pcs, [0, 2, 3, 5, 7, 9, 10], "应为 C D Eb F G A Bb（清乐商调）");
+  assert.equal(m.degNames.join(""), "商角清角徵羽变宫宫");
+  assert.equal(m.pentRot, 1, "pentRot 要跟着继承，调号/色彩才判得对");
+  P.state.b4 = 6; P.state.b7 = 0;
+  assert.deepEqual(P.baseMode().pcs, [0, 2, 4, 5, 7, 10], "变徵一侧：C D E F G Bb");
+  P.state.b4 = 0; P.state.b7 = 10;
+  assert.deepEqual(P.baseMode().pcs, [0, 2, 5, 7, 8, 10], "闰一侧：C D F G Ab Bb");
+});

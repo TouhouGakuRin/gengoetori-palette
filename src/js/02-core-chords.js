@@ -40,10 +40,12 @@ function sizeCap(mode){
   return chordDegreeMax(mode ? mode.pcs.length : 7);
 }
 
-// 和弦音数：七声取 4（七和弦），五/六声只有 3 个不重复的「隔一音」位置
+// 和弦音数：七声取 4（七和弦），五/六声只有 3 个不重复的「隔一音」位置；
+// 五声 + 五度叠置时按「三音/四音」开关取 3/4（与筹码的默认路径同一个口径）
 function chordSize(mode, voicing){
   const n = mode.pcs.length;
   const v = voicing || (typeof state !== "undefined" ? state.voicing : "7") || "7";
+  if(n === 5 && typeof state !== "undefined" && state.pentaChord === "quintal") return v === "3" ? 3 : 4;
   if(v === "3") return Math.min(3, Math.ceil(n / 2));
   return Math.min(4, Math.max(3, Math.ceil(n / 2)));
 }
@@ -77,7 +79,8 @@ function quintalDegrees(m, idx, size){
 }
 
 // 取「隔一个音阶音」的 n 个下标：i, i+2, i+4 …（对任意音数都成立，偶数音数也不会重复）
-// 五声且用户选了「五度叠置」时，改走 quintalDegrees
+// 五声且用户选了「五度叠置」时，改走 quintalDegrees —— 显式给的音数也走五度链，
+// 否则进行台槽位（显式音数）会和筹码（默认路径）取到两组不同的音。
 function chordDegrees(idx, voicing, mode, size){
   const m = mode
     || (typeof baseMode === "function" ? baseMode() : null)
@@ -85,10 +88,9 @@ function chordDegrees(idx, voicing, mode, size){
   const n = m ? m.pcs.length : 7;
   const cap = Math.min(CHORD_MAX, n);
   const want = size ? Math.max(2, Math.min(cap, Math.round(size))) : 0;
-  const useQ = m && n === 5 && !want && typeof state !== "undefined" && state.pentaChord === "quintal";
+  const useQ = m && n === 5 && typeof state !== "undefined" && state.pentaChord === "quintal";
   if(useQ){
-    const s = voicing === "3" ? 3 : 4;
-    return quintalDegrees(m, idx, s);
+    return quintalDegrees(m, idx, want || (voicing === "3" ? 3 : 4));
   }
   const s = want || chordSize(m || {pcs: new Array(7).fill(0)}, voicing);
   /* 隔一个音取和弦音：绕回同一个音就停（音阶只有 6 个音时，第 4 个音会绕回根音，

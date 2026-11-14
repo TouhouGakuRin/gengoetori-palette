@@ -453,7 +453,7 @@ class MainForm : Form
         Size = new Size(Math.Max(minW, Math.Min((int)(1440 * s), wa.Width)),
                         Math.Max(minH, Math.Min((int)(940 * s), wa.Height)));
         KeyPreview = true;
-        LoadState(s);
+        LoadState();
 
         view.Dock = DockStyle.Fill;
         view.DefaultBackgroundColor = ColorTranslator.FromHtml("#14181e");
@@ -764,7 +764,7 @@ class MainForm : Form
         }
     }
 
-    void LoadState(float scale)
+    void LoadState()
     {
         try
         {
@@ -776,7 +776,9 @@ class MainForm : Form
                 if (int.TryParse(p[0], out x) && int.TryParse(p[1], out y) &&
                     int.TryParse(p[2], out w) && int.TryParse(p[3], out h))
                 {
-                    Rectangle r = new Rectangle(x, y, Math.Max((int)(900 * scale), w), Math.Max((int)(620 * scale), h));
+                    // 信任存档尺寸：MinimumSize 在构造里已设好，WinForms 会自己夹；
+                    // 不再强制抬到 900×620 的 DPI 倍数，小屏用户上次的窄窗口不该被撑大。
+                    Rectangle r = new Rectangle(x, y, w, h);
                     // 换屏、拔掉副屏、改缩放之后，旧坐标可能落在屏幕外——一律夹回可见区域
                     Bounds = ClampToScreen(r);
                 }

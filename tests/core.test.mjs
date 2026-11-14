@@ -24,7 +24,7 @@ const CORE = [
 // core 层只在函数体里读 state（默认值），这里给一个只读桩
 const stateStub = { voicing: "7", inv: 0, spread: "close" };
 
-export function loadCore() {
+export function loadCore(stateOver) {
   const code = CORE.map(f => readFileSync(join(jsDir, f), "utf8")).join("\n");
   const factory = new Function(
     "state",
@@ -32,7 +32,7 @@ export function loadCore() {
       "\nreturn {MODES,TONICS,spell,chordOf,chordVoicing,chordDegrees,chordSize,distance,brightness," +
       "pentaMode,PENTA_NAMES,PENTA_BASE,PENTA_IDS,bestKeySig,keySigName,tritones,buildMidi,octaveFor,noteName,INV_LABEL,IONIAN,degLabel,sizeCap,chordDegreeMax};"
   );
-  return factory(stateStub);
+  return factory(Object.assign({}, stateStub, stateOver));
 }
 
 const ML = loadCore();
@@ -330,4 +330,64 @@ test("MIDI：超过 127 字节的中文轨道名用 VLQ 记长度（不能截断
   assert.equal(vlen, enc.length, "轨道名长度字节不对（应当用 VLQ，不能 & 0x7f）");
   const got = bytes.slice(i, i + vlen);
   assert.deepEqual([...got], [...enc], "轨道名内容被截断");
+});
+
+/* ---------------- 五声偏音（pentaMode） ---------------- */
+
+test("pentaMode：同时加清角与变宫，音集与阶名都是清乐商调，英文名把两个偏音都列出", () => {
+  const penS = ML.MODES.find(m => m.id === "penS");
+  const v = ML.pentaMode(penS, { rot: 1, b4: 5, b7: 11 });
+  assert.deepEqual(v.pcs, [0, 2, 3, 5, 7, 9, 10], "商调式+清角+变宫应为 C D Eb F G A Bb");
+  assert.equal(v.degNames.join(""), "商角清角徵羽变宫宫");
+  assert.ok(v.n.includes("BianZhi"), `英文名应含 BianZhi：${v.n}`);
+  assert.ok(v.n.includes("BianGong"), `英文名应含 BianGong：${v.n}`);
+  // 单独加一个偏音时英文名照旧
+  const only4 = ML.pentaMode(penS, { rot: 1, b4: 5 });
+  assert.ok(only4.n.includes("BianZhi") && !only4.n.includes("BianGong"), only4.n);
+  const only7 = ML.pentaMode(penS, { rot: 1, b7: 11 });
+  assert.ok(only7.n.includes("BianGong") && !only7.n.includes("BianZhi"), only7.n);
+});
+
+/* ---------------- 五声五度叠置：筹码与进行台槽位必须取同一组音 ---------------- */
+
+test("五声五度叠置：显式音数走同一条五度链，槽位默认与筹码一致，三度叠置不受影响", () => {
+  const Q = loadCore({ pentaChord: "quintal", A: "penG" });
+  const penG = Q.MODES.find(m => m.id === "penG");
+  const chip = Q.chordOf(penG, 0);                          // 筹码：默认路径（宫徵商羽）
+  assert.deepEqual(chip.tones, [0, 7, 2, 9], "宫的五度叠置默认应为 C G D A");
+  // 进行台槽位默认音数走 chordSize：必须是 4（四音），且取音与筹码一致
+  const defN = Q.chordSize(penG, "7");
+  assert.equal(defN, 4, "五度叠置时默认音数是 4（三音/四音开关）");
+  assert.deepEqual(Q.chordOf(penG, 0, "7", defN).tones, chip.tones, "槽位默认 == 筹码");
+  // 用户显式选的音数也走五度链：三音 / 五音
+  assert.deepEqual(Q.chordOf(penG, 0, "7", 3).tones, [0, 7, 2]);
+  assert.deepEqual(Q.chordOf(penG, 0, "7", 5).tones, [0, 7, 2, 9, 4]);
+  // 三和弦开关（voicing "3"）默认三音
+  assert.deepEqual(Q.chordOf(penG, 0, "3").tones, [0, 7, 2]);
+  // 三度叠置（tertian）路径完全不受影响
+  const T = loadCore({ pentaChord: "tertian", A: "penG" });
+  assert.deepEqual(T.chordSize(penG, "7"), 3, "三度叠置时五声默认 3 音");
+  assert.deepEqual(T.chordOf(penG, 0, "7", 3).tones, [0, 4, 9]);
+  assert.deepEqual(T.chordOf(penG, 0).tones, [0, 4, 9]);
+});
+
+/* ---------------- 距离百分比封顶 ---------------- */
+
+test("distance：pct 不超过 100（全音阶两种移位这种极端对也要守得住口径）", () => {
+  const wt0 = ML.MODES.find(m => m.id === "wt0"), wt1 = ML.MODES.find(m => m.id === "wt1");
+  assert.ok(ML.distance(wt0, wt1).pct <= 100, `wt0↔wt1 pct=${ML.distance(wt0, wt1).pct}`);
+  const chrom = ML.MODES.find(m => m.id === "chrom");
+  const penG = ML.MODES.find(m => m.id === "penG");
+  assert.ok(ML.distance(chrom, penG).pct <= 100, `chrom↔penG pct=${ML.distance(chrom, penG).pct}`);
+  assert.equal(ML.distance(wt0, wt0).pct, 0);
+});
+
+/* ---------------- octaveFor 覆盖 0 组 ---------------- */
+
+test("octaveFor：低音区的 A0/B0 也能标对八度，不再被挤进第 1 组", () => {
+  assert.equal(ML.octaveFor(9, 21), 0, "A0=midi21 应是第 0 组");
+  assert.equal(ML.octaveFor(11, 23), 0, "B0=midi23 应是第 0 组");
+  assert.equal(ML.octaveFor(0, 24), 1, "C1=midi24 应是第 1 组");
+  assert.equal(ML.octaveFor(0, 60), 4, "C4=midi60 应是第 4 组");
+  assert.equal(ML.octaveFor(4, 76), 5, "E5=midi76 应是第 5 组");
 });

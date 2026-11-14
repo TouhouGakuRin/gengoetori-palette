@@ -190,3 +190,46 @@ test("旋律里的三全音跳进要报出来", () => {
   const ok = {S: 71, A: 64, T: 55, B: 48};        // 半音
   assert.equal(ML.satbCheck(v, ok).some(x => x.kind === "三全音跳进"), false);
 });
+
+/* ── 打分口径：三音/五音/七音按音集实判，缺七音真罚、无三度不罚 ── */
+
+test("satb：属七省略七音的排法要明显劣于带上七音（缺七音罚分真实生效）", () => {
+  const cands = ML.satbCandidates([0,4,7,10], 0, 0);   // C7
+  const with7 = cands.filter(c => [c.S,c.A,c.T,c.B].some(v => ((v % 12)+12)%12 === 10));
+  const without7 = cands.filter(c => !with7.includes(c));
+  assert.ok(with7.length && without7.length, "两类排法都该存在");
+  const gap = without7[0].sc - with7[0].sc;
+  assert.ok(gap >= 12,
+    `省略七音的最优解应比带七音的差 18 分上下（扣重复奖励），实际差 ${gap}`);
+});
+
+test("satb：小七和弦同理，省略七音要被压下去", () => {
+  const cands = ML.satbCandidates([0,3,7,10], 0, 0);   // Cm7
+  const with7 = cands.filter(c => [c.S,c.A,c.T,c.B].some(v => ((v % 12)+12)%12 === 10));
+  const without7 = cands.filter(c => !with7.includes(c));
+  const gap = without7[0].sc - with7[0].sc;
+  assert.ok(gap >= 12, `Cm7 省七音 gap=${gap}`);
+});
+
+test("satb：没有三度的和弦不吃「缺三音」的冤枉罚分", () => {
+  const sus = ML.satbCandidates([0,7,2], 0, 3);        // C-G-D，本来就没三度
+  const tri = ML.satbCandidates([0,4,7], 0, 3);        // C-E-G
+  assert.ok(sus[0].sc < 15,
+    `sus 和弦不该背 +18 的缺三音罚分，top sc=${sus[0].sc}（三和弦 top=${tri[0].sc}）`);
+  assert.ok(Math.abs(sus[0].sc - tri[0].sc) <= 8, "两类和弦的分数量级应相当");
+});
+
+test("satb：五度叠置顺序的音集里，重复的应是根音/五音而不是九音", () => {
+  const cands = ML.satbCandidates([0,7,2,9], 0, 0);    // 五度链顺序：宫徵商羽
+  const top = cands[0];
+  const counts = {};
+  [top.S, top.A, top.T, top.B].forEach(v => {
+    const p = ((v % 12) + 12) % 12;
+    counts[p] = (counts[p] || 0) + 1;
+  });
+  const doubled = Object.keys(counts).find(p => counts[p] >= 2);
+  if(doubled !== undefined){
+    assert.ok(+doubled === 0 || +doubled === 7,
+      `重复音应是根音(0)或五音(7)，实际是 ${doubled}`);
+  }
+});

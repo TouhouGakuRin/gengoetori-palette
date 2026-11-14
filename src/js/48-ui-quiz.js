@@ -26,8 +26,11 @@ function playQuiz(){
   if(!quiz.m) return;
   const t = TONICS[quiz.to];
   audio();
-  playScale(quiz.m, t);
-  playDegree(quiz.m, 0, t, {when: 2.1, dur: 1.0, vel: 0.9});
+  /* 音阶 + 主和弦拼成一份计划一次排上：playEvents 每次都会清总线，
+     分两次调用会把先排的音阶整体掐掉（只能听到最后的主和弦）。 */
+  const o = withTune({});
+  playEvents(planScale(quiz.m, t, o)
+    .concat(planDegree(quiz.m, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0, vel: 0.9}))), o.a4);
 }
 
 function renderQuiz(){
