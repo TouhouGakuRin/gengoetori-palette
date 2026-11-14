@@ -13,9 +13,28 @@ function renderSelects(env){
   $("#selB").value = state.B;
 }
 
+/* A/B 对比与「▶ 对比试听」看的是同一条音阶：旋宫偏音、变形滑杆都算进去，
+   否则面板说「A 多一个音」，耳朵听到的却是没加偏音的那条（AUD-L9）。
+   变形后两个级数可能滑到同一个音高，比较前按音高去重，免得「A 独有 N 个」把同一个音数两遍。 */
+function compareModeA(){
+  const m = (typeof activeMode === "function") ? activeMode()
+    : (typeof byId === "function" ? byId(state.A) : null);
+  if(!m || !m.pcs) return m;
+  const seen = new Set(), pcs = [], degNames = [];
+  for(let i = 0; i < m.pcs.length; i++){
+    const p = m.pcs[i];
+    if(seen.has(p)) continue;
+    seen.add(p); pcs.push(p);
+    if(m.degNames) degNames.push(m.degNames[i]);
+  }
+  const out = Object.assign({}, m, {pcs});
+  if(m.degNames) out.degNames = degNames;
+  return out;
+}
+
 function renderCompare(env){
   const { $, state, byId, tonicObj } = env;
-  const a = byId(state.A), b = byId(state.B), d = distance(a, b), t = tonicObj();
+  const a = compareModeA() || byId(state.A), b = byId(state.B), d = distance(a, b), t = tonicObj();
   const spA = spell(a, t), spB = spell(b, t);
 
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));

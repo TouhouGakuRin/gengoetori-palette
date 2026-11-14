@@ -82,8 +82,8 @@ function deckMidis(){
       offs: x.v.off,
       tonesAbs: x.c.tones.map(pc => ((t.pc + pc) % 12 + 12) % 12),
       bassPc: ((t.pc + x.m.pcs[x.v.degs[0]]) % 12 + 12) % 12,
-      r0: base + x.m.pcs[s.d],
-      rootPc: ((t.pc + x.m.pcs[s.d]) % 12 + 12) % 12,
+      r0: base + x.m.pcs[clampDeg(s.d, x.m)],
+      rootPc: ((t.pc + x.m.pcs[clampDeg(s.d, x.m)]) % 12 + 12) % 12,
     });
   });
   if(deck.satb){
@@ -114,7 +114,7 @@ function deckAddEx(x){
   }
   const prev = deck.slots.filter(Boolean).pop();
   deck.slots[at] = {m: null, d: 0, n: x.tones.length, inv: 0, spread: "close",
-    beats: (prev && prev.beats) || 4, rest: false,
+    beats: (prev && prev.beats) || 2, rest: false,   // 编辑器把默认 2 拍存成 null，继承别抬成 4
     ex: {root: x.root, tones: x.tones.slice(), ivs: x.ivs.slice(), names: x.names.slice(),
       symbol: x.symbol, roman: x.roman, kind: x.kind}};
   deck.sel = at;
@@ -159,12 +159,15 @@ function loadDeck(){
             ex: {root: ((ex.root|0) % 12 + 12) % 12, tones: ex.tones.map(p => ((p|0) % 12 + 12) % 12),
               ivs: Array.isArray(ex.ivs) ? ex.ivs.slice(0, 8) : [],
               names: Array.isArray(ex.names) ? ex.names.slice(0, 8) : [],
-              symbol: String(ex.symbol || ""), roman: String(ex.roman || ""),
+              symbol: (typeof urlSafeText === "function" ? urlSafeText(ex.symbol) : String(ex.symbol || "")),
+              roman:  (typeof urlSafeText === "function" ? urlSafeText(ex.roman)  : String(ex.roman || "")),
               kind: ex.kind === "secondary" ? "secondary" : "borrow"}};
           return;
         }
         if(s && typeof s.d === "number" && s.d >= 0 && s.d < 12){
-          deck.slots[i] = {m: s.m || null, d: s.d|0, n: s.n ? Math.max(2, Math.min(CHORD_MAX, s.n|0)) : null,
+          // 存档可能来自音数更多的调式；把级数收敛到槽位音阶内，别让 sp[d] 越界
+          const mm = (typeof byId === "function" ? (byId(s.m) || byId(state.A)) : null);
+          deck.slots[i] = {m: s.m || null, d: clampDeg(s.d, mm), n: s.n ? Math.max(2, Math.min(CHORD_MAX, s.n|0)) : null,
             inv: s.inv ? Math.max(0, Math.min(9, s.inv|0)) : 0, spread: s.spread === "open" ? "open" : "close",
             beats: s.beats ? Math.max(1, Math.min(8, s.beats|0)) : null, rest: !!s.rest, ex: null};
         }
@@ -225,15 +228,16 @@ function renderDeck(){
       continue;
     }
     if(s.ex){
+      // ex 文本可能来自 URL / 备份 JSON，入 innerHTML 前统一转义
       h += `<div class="slot filled ex${sel}" draggable="true" data-i="${i}">`
-        + `<span class="r">${s.ex.roman}</span><span class="c">${s.ex.symbol}</span>`
+        + `<span class="r">${escapeHtml(s.ex.roman)}</span><span class="c">${escapeHtml(s.ex.symbol)}</span>`
         + `<span class="tag">${s.ex.kind === "secondary" ? "副属" : "借用"} · ${dur}拍</span></div>`;
       continue;
     }
-    const m = slotMode(s), sp = spell(m, t), {c, n} = slotChord(s);
+    const m = slotMode(s), sp = spell(m, t), {c, n} = slotChord(s), d = clampDeg(s.d, m);
     const own = !s.m || s.m === state.A;
     h += `<div class="slot filled${sel}" draggable="true" data-i="${i}">`
-      + `<span class="r">${sp[s.d].roman}</span><span class="c">${sp[s.d].name}${c.sym}</span>`
+      + `<span class="r">${sp[d].roman}</span><span class="c">${sp[d].name}${c.sym}</span>`
       + `<span class="tag${own ? " dim" : ""}">${own ? n + " 音" : shortModeName(m) + " · " + n + " 音"} · ${dur}拍</span></div>`;
   }
   $("#deck").innerHTML = h;
@@ -281,9 +285,9 @@ function renderDeckHint(){
   const parts = seq.map(i => {
     const s = deck.slots[i], m = slotMode(s), sp = spell(m, t);
     if(s.rest) return `休止·${slotDur(s)}拍`;
-    if(s.ex) return s.ex.roman;
-    const tag = (s.m && s.m !== state.A) ? `<i>${m.cn.slice(0,4)}</i>` : "";
-    return `${tag} ${sp[s.d].roman}`;
+    if(s.ex) return escapeHtml(s.ex.roman);
+    const tag = (s.m && s.m !== state.A) ? `<i>${escapeHtml(m.cn.slice(0,4))}</i>` : "";
+    return `${tag} ${sp[clampDeg(s.d, m)].roman}`;
   });
   let warn = "";
   if(deck.satb){
@@ -410,7 +414,9 @@ function renderDeckEditor(){
   const {c} = slotChord(s);
   /* 和弦音名要走「三度拼写 + 主音」这条正路：c.tones 是相对主音的音程，
      直接拿去查 sp 会落到 C 上的同名音（Eb 的 I 级会被写成 C E G B）。 */
-  const rootAbs = sp[s.d].abs, li0 = sp[s.d].li, rootMidi = 60 + rootAbs;
+  /* s.d 可能是切调式前留下的（七声 VII 槽 → 切五声），sp 只有 5 项，查表前先收敛 */
+  const sd = clampDeg(s.d, m);
+  const rootAbs = sp[sd].abs, li0 = sp[sd].li, rootMidi = 60 + rootAbs;
   const cNotes = c.tones.map(pc => {
     const abs = ((t.pc + pc) % 12 + 12) % 12;
     const midi = rootMidi + ((abs - rootAbs + 12) % 12);
@@ -420,7 +426,7 @@ function renderDeckEditor(){
     return LETTERS[nt.li] + accStr(nt.nacc);
   }).join(" ");
   document.getElementById("dePreview").innerHTML =
-    `<b>${sp[s.d].name}${c.sym}</b> <span class="dim2">${cNotes}</span>`;
+    `<b>${sp[sd].name}${c.sym}</b> <span class="dim2">${cNotes}</span>`;
 }
 
 /* ---------- 五线谱 ---------- */
@@ -494,15 +500,15 @@ function deckStaffGroups(warn){
       label = ex.roman;
       sym = ex.symbol;
     } else {
-      const m = slotMode(s), sp = spell(m, t), x = slotVoicing(s);
-      const li0 = sp[s.d].li, rootMidi = 60 + t.pc + m.pcs[s.d];
+      const m = slotMode(s), sp = spell(m, t), x = slotVoicing(s), d = clampDeg(s.d, m);
+      const li0 = sp[d].li, rootMidi = 60 + t.pc + m.pcs[d];
       notes = ms.map(v => {
         const pc = ((v % 12) + 12) % 12, k = sp.find(x => ((x.abs % 12) + 12) % 12 === pc);
         const alt = k ? {step: 0, li: k.li, nacc: k.nacc} : null;
         return pickSpelling(li0, rootMidi, v, alt);
       });
-      label = sp[s.d].roman;
-      sym = sp[s.d].name + (x.c.sym || "") + (x.v.inv > 0 ? "/" + sp[x.v.degs[0]].name : "");
+      label = sp[d].roman;
+      sym = sp[d].name + (x.c.sym || "") + (x.v.inv > 0 ? "/" + sp[x.v.degs[0]].name : "");
     }
     if(deck.satb){
       /* 四部和声：S/A 高音谱，T/B 低音谱；四行谱模式再拆成每人一行 */

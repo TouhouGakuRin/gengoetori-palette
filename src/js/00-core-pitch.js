@@ -12,6 +12,13 @@ const CHROM = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
 
 const ROMAN = ["I","II","III","IV","V","VI","VII"];
 
+/* 外部文本（URL hash / 备份 JSON 里的和弦级数记号）会进 innerHTML 或 SVG 文本节点，
+   统一在这里转义：& < > " ' 五个字符覆盖 HTML 与 XML 两种上下文。 */
+function escapeHtml(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[c]);
+}
+
 /* 三度叠置时「某个音程该用哪个字母」：下标是相对根音的半音数，值是字母偏移。
    有了它，C 上的小三度才会写成 Eb 而不是 D#（谱面上不会造出假二度）。 */
 const TERTIAN_LETTER = [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6];

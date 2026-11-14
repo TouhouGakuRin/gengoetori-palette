@@ -477,6 +477,9 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .pentaopts button{font:inherit;font-size:12px;padding:3px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--dim2);cursor:pointer;transition:.12s}
 .pentaopts button:hover{color:var(--txt)}
 .pentaopts button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+/* 加偏音后五度叠置不可用：留在原位但点不动，别让它消失得莫名其妙 */
+.pentaopts button:disabled{opacity:.4;cursor:not-allowed}
+.pentaopts button:disabled:hover{color:var(--dim2)}
 
 /* 焦点可见：键盘用户要能看到自己在哪个控件上（放在最后，盖过各处 outline:none） */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}

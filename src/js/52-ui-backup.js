@@ -52,6 +52,27 @@ function backupPayload(appVersion){
   };
 }
 
+/* 进行台槽位里有自由文本（级数记号、和弦符号），导入后会被拼进 innerHTML 与 SVG 文本节点。
+   按分享链接同一套白名单清洗，防止备份 JSON 变成注入入口。解析不了就原样保留（渲染层另有转义兜底）。 */
+function sanitizeDeckValue(v){
+  if(typeof v !== "string" || typeof urlSafeText !== "function") return v;
+  try{
+    const d = JSON.parse(v);
+    const arr = Array.isArray(d) ? d : (d && Array.isArray(d.s) ? d.s : null);
+    if(!arr) return v;
+    const clean = s => {
+      if(!s || !s.ex || typeof s.ex !== "object") return s;
+      s.ex.roman = urlSafeText(s.ex.roman);
+      s.ex.symbol = urlSafeText(s.ex.symbol);
+      if(Array.isArray(s.ex.names)) s.ex.names = s.ex.names.map(x => urlSafeText(x, 12));
+      return s;
+    };
+    if(Array.isArray(d)) return JSON.stringify(arr.map(clean));
+    d.s = arr.map(clean);
+    return JSON.stringify(d);
+  }catch(_){ return v; }
+}
+
 /* 解析并校验；不认识的一律拒绝，不做"尽力而为"的猜测 */
 function parseBackup(text){
   let data;
@@ -82,7 +103,7 @@ function parseBackup(text){
     if(v !== null && typeof v !== "string") continue;
     chars += k.length + String(v == null ? "" : v).length;
     if(chars > BACKUP_MAX_BYTES) return { ok:false, reason:"备份体积超限" };
-    out[k] = v;
+    out[k] = (k === "mlab-deck") ? sanitizeDeckValue(v) : v;
   }
   return {
     ok:true,

@@ -101,6 +101,13 @@ function satbSequence(specs, opts){
     cost.push(pools[i] ? pools[i].map(c => c.sc) : []);
     back.push(pools[i] ? pools[i].map(() => -1) : []);
   }
+  // 首槽没有 prev，补一次间距硬罚，和后续槽位同一口径
+  if(pools[0]){
+    for(let j = 0; j < pools[0].length; j++){
+      cost[0][j] += spacingViolations(pools[0][j])
+        .reduce((s, h) => s + (SATB_WEIGHT[h.kind] || 20), 0);
+    }
+  }
   for(let i = 1; i < n; i++){
     if(!pools[i] || !pools[i - 1]) continue;
     for(let b = 0; b < pools[i].length; b++){
@@ -139,7 +146,8 @@ function seventhOf(tones){
   const t = [...new Set(tones.map(p => ((p % 12) + 12) % 12))];
   if(t.length < 4) return null;
   const iv = ((t[3] - t[0]) % 12 + 12) % 12;
-  return (iv === 10 || iv === 11) ? t[3] : null;
+  // 9 = 减七度（减七和弦），同样要下行解决；只认 10/11 会整类漏检
+  return (iv === 9 || iv === 10 || iv === 11) ? t[3] : null;
 }
 
 // 每条违规的罚分。硬规矩（平行五八、导音、间距）压过候选本身十几分的软分差，
@@ -151,6 +159,21 @@ const SATB_WEIGHT = {
   "三全音跳进": 30,
   "隐伏八度": 20, "隐伏五度": 16,
 };
+
+// 上三声部相邻不超过八度，男高音与男低音不超过十二度。
+// 抽成独立函数：satbCheck 只查 cur，而 DP 的首槽与体检的首个 voicing 没有 prev，
+// 以前从不被硬规矩检查，导致同一 voicing 因位置不同得分不同。
+const SATB_GAPS = [["S","A",12,"上两声部不超过八度"],
+  ["A","T",12,"中两声部不超过八度"], ["T","B",19,"T–B 不超过十二度"]];
+function spacingViolations(v){
+  const out = [];
+  if(!v) return out;
+  for(const [x, y, mx, why] of SATB_GAPS){
+    const g = v[x] - v[y];
+    if(g > mx) out.push({kind:"间距过大", voices:x + "/" + y, detail:`${g} 半音 · ${why}`});
+  }
+  return out;
+}
 
 /* 相邻两个和弦的检查。opts = {tonic: 主音 pc, seven: 上一和弦七音 pc, nextTones: 这一和弦的音级}
    返回 [{kind, voices, detail}]，空数组表示没查到大问题。
@@ -169,6 +192,10 @@ function satbCheck(prev, cur, opts){
     if(p0 <= 0 || p1 <= 0) continue;                          // 交叉或同度，不归这一条管
     const d0 = pcOf(p0), d1 = pcOf(p1);
     if(d0 !== d1) continue;
+    /* 平行五/八度的定义要求两个声部「同向运动」：静止（oblique）、
+       斜行、反行到同类纯音程都不算平行，以前漏了这条判据会重罚合法进行。 */
+    const dx = cur[x] - prev[x], dy = cur[y] - prev[y];
+    if(dx === 0 || dy === 0 || Math.sign(dx) !== Math.sign(dy)) continue;
     if(d0 === 7) out.push({kind:"平行五度", voices:x + "/" + y, detail:"两声部同向进到纯五度"});
     else if(d0 === 0) out.push({kind:"平行八度", voices:x + "/" + y, detail:"两声部同向进到纯八度"});
   }
@@ -203,12 +230,8 @@ function satbCheck(prev, cur, opts){
     }
   }
 
-  // 5. 间距：上三声部相邻不超过八度，男高音与男低音不超过十二度
-  const gaps = [["S","A",12,"上两声部不超过八度"],["A","T",12,"中两声部不超过八度"],["T","B",19,"T–B 不超过十二度"]];
-  for(const [x, y, mx, why] of gaps){
-    const g = cur[x] - cur[y];
-    if(g > mx) out.push({kind:"间距过大", voices:x + "/" + y, detail:`${g} 半音 · ${why}`});
-  }
+  // 5. 间距：只查当前 voicing（每个 voicing 在转移里恰好查一次，不重复计罚）
+  out.push(...spacingViolations(cur));
 
   // 6. 旋律里的三全音跳进（增四度/减五度），传统四部写作要避免
   for(const v of ["S","A","T","B"]){
@@ -223,7 +246,11 @@ function satbCheck(prev, cur, opts){
 function satbViolations(voicings, opts){
   opts = opts || {};
   const out = [];
-  for(let k = 1; k < (voicings || []).length; k++){
+  const list = voicings || [];
+  if(list.length && list[0]){
+    for(const h of spacingViolations(list[0])) out.push(Object.assign({from: 0, to: 0}, h));
+  }
+  for(let k = 1; k < list.length; k++){
     const a = voicings[k - 1], b = voicings[k];
     if(!a || !b) continue;
     const seven = opts.sevenths ? opts.sevenths[k - 1] : null;

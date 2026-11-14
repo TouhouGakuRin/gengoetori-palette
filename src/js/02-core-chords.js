@@ -40,6 +40,16 @@ function sizeCap(mode){
   return chordDegreeMax(mode ? mode.pcs.length : 7);
 }
 
+/* 级数收敛：URL / 备份 / 切调式都可能留下比当前音阶还大的 d。
+   上界钳到最后一个音，负数按环绕归一，避免 pcs[idx] 取到 undefined 后整条音集变 NaN。 */
+function clampDeg(idx, mode){
+  const n = (mode && mode.pcs && mode.pcs.length) ? mode.pcs.length : 7;
+  const i = Math.round(Number(idx));
+  if(!isFinite(i)) return 0;
+  if(i < 0) return ((i % n) + n) % n;
+  return Math.min(i, n - 1);
+}
+
 // 和弦音数：七声取 4（七和弦），五/六声只有 3 个不重复的「隔一音」位置；
 // 五声 + 五度叠置时按「三音/四音」开关取 3/4（与筹码的默认路径同一个口径）
 function chordSize(mode, voicing){
@@ -75,6 +85,17 @@ function quintalDegrees(m, idx, size){
     out.push(j);
     cur = pcs[j];
   }
+  /* 日本五声（都节/平调子/岩户）里找不到连续纯五度，上面会 break 到只剩 1 个音，
+     以前直接返回会产出 sym="()" 的空和弦并污染 SATB / MIDI。补不到三音就退回默认叠法。 */
+  if(out.length < Math.min(3, size)){
+    const alt = [], n = pcs.length, cap = Math.min(Math.max(size, 3), chordDegreeMax(n));
+    for(let k = 0; k < cap; k++){
+      const j = (idx + 2 * k) % n;
+      if(alt.indexOf(j) >= 0) break;
+      alt.push(j);
+    }
+    return alt;
+  }
   return out;
 }
 
@@ -86,6 +107,7 @@ function chordDegrees(idx, voicing, mode, size){
     || (typeof baseMode === "function" ? baseMode() : null)
     || (typeof byId === "function" && typeof state !== "undefined" ? byId(state.A) : null);
   const n = m ? m.pcs.length : 7;
+  idx = clampDeg(idx, m);          // 外部传入的级数先收敛，负数取模也不再出错
   const cap = Math.min(CHORD_MAX, n);
   const want = size ? Math.max(2, Math.min(cap, Math.round(size))) : 0;
   const useQ = m && n === 5 && typeof state !== "undefined" && state.pentaChord === "quintal";
@@ -154,6 +176,7 @@ function symbolOf(iv){
 function chordOf(mode, idx, voicing, size){
   const v = voicing || state.voicing || "7";
   const pcs = mode.pcs;
+  idx = clampDeg(idx, mode);       // degs 按归一后的 idx 生成，pcs[idx] 必须是同一个
   const idxs = chordDegrees(idx, v, mode, size);
   const iv = idxs.map(j => (pcs[j] - pcs[idx] + 12) % 12).sort((a,b)=>a-b);
   return {idx, tones: idxs.map(j => pcs[j]), iv, sym: symbolOf(iv), key: iv.join(","), degs: idxs};
@@ -161,6 +184,7 @@ function chordOf(mode, idx, voicing, size){
 
 function chordVoicing(mode, idx, opts){
   const o = opts || {};
+  idx = clampDeg(idx, mode);
   const degs = chordDegrees(idx, o.voicing, mode, o.size);
   const n = degs.length;
   const inv = Math.min(Math.max(o.inv !== undefined ? o.inv : (state.inv || 0), 0), n - 1);

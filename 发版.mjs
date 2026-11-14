@@ -1,4 +1,4 @@
-﻿/* 幻歌鸟调色盘 · Gengoetori Palette
+/* 幻歌鸟调色盘 · Gengoetori Palette
  * © 2026 TouhouGakurin / 幻歌鸟与风声之乐 · MIT License
  * https://github.com/TouhouGakurin/gengoetori-palette
  */
@@ -8,7 +8,7 @@
  *   node 发版.mjs --fast      跳过测试（只构建 + 打包，自用快速验证）
  *   node 发版.mjs --build     只构建网页版（不改版本、不打包）
  *
- * 版本号从 VERSION 读；产物：release/幻歌鸟调色盘-<版本>-win-x64.zip + manifest.json
+ * 版本号从 VERSION 读；产物：release/幻歌鸟调色盘-<版本>-win-x64.zip + -web.zip + manifest.json
  *
  * 注：本机沙箱禁命名管道，child_process 的 stdio: "pipe" 会 EPERM。
  *     所以子进程一律把 stdout/stderr 直接写进临时文件（fd 不是管道），再从文件读。
@@ -26,7 +26,8 @@ const FAST = argv.has("--fast");
 const ONLY_BUILD = argv.has("--build");
 
 const version = fs.readFileSync(path.join(HERE, "VERSION"), "utf8").trim();
-const SUITES = ["core", "key", "staff", "state", "satb", "rhythm", "map", "deck", "ear", "borrow", "settings", "link", "modules", "backup"];
+// PR #1 之后的第二轮回归（tests/pr2-regression.test.mjs）必须进发版闸门，别漏跑
+const SUITES = ["core", "key", "staff", "state", "satb", "rhythm", "map", "deck", "ear", "borrow", "settings", "link", "modules", "backup", "pr2-regression"];
 const LOG_DIR = path.join(os.tmpdir(), "gengoetori-release");
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -69,10 +70,14 @@ if (FAST) {
     const file = path.join("tests", `${name}.test.mjs`);
     if (!fs.existsSync(path.join(HERE, file))) { suiteResult.push({ name, skip: true }); continue; }
     const r = run(file, [], "test-" + name);
-    const pass = Number((r.out.match(/ℹ pass (\d+)/) || [0, 0])[1]);
-    const bad = Number((r.out.match(/ℹ fail (\d+)/) || [0, 0])[1]);
+    // Node 22 在非 TTY 下默认输出 TAP（# pass），老版本/TTY 是 spec（ℹ pass），两种都认
+    const pass = Number((r.out.match(/(?:ℹ|#) pass (\d+)/) || [0, 0])[1]);
+    const bad = Number((r.out.match(/(?:ℹ|#) fail (\d+)/) || [0, 0])[1]);
     totalPass += pass; totalFail += bad;
-    suiteResult.push({ name, pass, fail: bad });
+    /* 某套崩在汇总行之前（语法错、import 抛错）时输出里没有 pass/fail 行：
+       bad 会是 0，只有 r.ok 为 false。不记进来的话测试挂了照样往下打包发版。 */
+    if (!r.ok) totalFail++;
+    suiteResult.push({ name, pass, fail: bad, ok: r.ok });
     say(`  ${bad === 0 && r.ok ? "✓" : "✗"} ${name.padEnd(9)} ${pass} 通过${bad ? " / " + bad + " 失败" : ""}`);
     if (bad > 0 || !r.ok) {
       console.error(r.out.split("\n").filter(l => /not ok|✖|Error|AssertionError/.test(l)).slice(0, 20).join("\n"));
@@ -102,6 +107,30 @@ fs.copyFileSync(distZip, outPath);
 
 const buf = fs.readFileSync(outPath);
 const sha = crypto.createHash("sha256").update(buf).digest("hex");
+
+/* ---------- 4b. 纯网页版 zip（index.html + 字体 + 图标） ---------- */
+say("· 打纯网页版 zip");
+const webStage = path.join(os.tmpdir(), "gengoetori-web-" + version);
+fs.rmSync(webStage, { recursive: true, force: true });
+fs.mkdirSync(webStage, { recursive: true });
+for (const f of ["index.html", "LICENSE"]) fs.copyFileSync(path.join(HERE, f), path.join(webStage, f));
+for (const d of ["assets", "fonts"]) {
+  fs.cpSync(path.join(HERE, d), path.join(webStage, d), { recursive: true });
+}
+const webName = `幻歌鸟调色盘-${version}-web.zip`;
+const webPath = path.join(releaseDir, webName);
+fs.rmSync(webPath, { force: true });
+if (process.platform === "win32") {
+  execFileSync("powershell", ["-NoProfile", "-Command",
+    `Compress-Archive -Path '${webStage}\\*' -DestinationPath '${webPath}' -CompressionLevel Optimal`],
+    { stdio: "inherit" });
+} else {
+  execFileSync("zip", ["-r", webPath, "."], { cwd: webStage, stdio: "inherit" });
+}
+const webBuf = fs.readFileSync(webPath);
+const webSha = crypto.createHash("sha256").update(webBuf).digest("hex");
+say(`  ${webName}  (${(webBuf.length / 1048576).toFixed(2)} MB)`);
+
 const exePath = path.join(HERE, "packaging-webview2", "out", "幻歌鸟调色盘.exe");
 const exeSize = fs.existsSync(exePath) ? fs.statSync(exePath).size : null;
 
@@ -123,11 +152,14 @@ const manifest = {
   产物: outName,
   打包体积: buf.length,
   校验: { sha256: sha },
+  网页版产物: webName,
+  网页版体积: webBuf.length,
+  网页版校验: { sha256: webSha },
   宿主: "WebView2（.NET Framework 4.8 + WinForms）",
   外壳体积: exeSize,
   测试: FAST ? "跳过" : { 套件: suiteResult, 通过: totalPass, 失败: totalFail },
   发版前提交: headHash(),
-  说明: "解压即用；依赖系统 WebView2 运行时（Win10/11 自带，Win7/8 需装一次）。",
+  说明: "解压即用；依赖系统 WebView2 运行时（Win10/11 自带，Win7/8 需装一次）。网页版解压后双击 index.html。",
 };
 fs.writeFileSync(path.join(releaseDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 
@@ -137,6 +169,7 @@ say("");
 say("────────────────────────────────────────");
 say(`  版本    ${version}`);
 say(`  产物    release/${outName}  (${mb(buf.length)})`);
+say(`          release/${webName}  (${mb(webBuf.length)})`);
 say(`  外壳    ${exeSize ? Math.round(exeSize / 1024) + " KB" : "?"}（解开后整包约 1.2 MB）`);
 if (!FAST) say(`  测试    ${totalPass} 通过 / ${totalFail} 失败（${suiteResult.filter(s => !s.skip).length} 套）`);
 say(`  校验    ${sha.slice(0, 16)}…`);

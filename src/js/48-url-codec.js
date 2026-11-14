@@ -36,6 +36,15 @@ function urlExToParam(ex){
   };
 }
 
+/* 分享链接 / 备份 JSON 里的级数记号会进 innerHTML 与 SVG 文本节点，
+   入口先按乐谱记号白名单清洗（渲染层另有 escapeHtml 兜底）。
+   只允许罗马数字、音名字母、升降增减号与常见分隔符，其余一律丢弃。 */
+function urlSafeText(s, max){
+  return String(s == null ? "" : s)
+    .replace(/[^A-Za-z0-9IVXivx#b\u266D\u266F\u00B0\u00F8+\-\s/()\u00B7.,]/g, "")
+    .slice(0, max || 24);
+}
+
 function urlExFromParam(o){
   if(!o || !Array.isArray(o.t) || !o.t.length) return null;
   const tones = o.t.slice(0, URL_MAX_TONES).map(urlMod12).filter(function(x){ return x !== null; });
@@ -45,10 +54,10 @@ function urlExFromParam(o){
     root: root,
     tones: tones,
     ivs: Array.isArray(o.iv) ? o.iv.slice(0, URL_MAX_TONES).map(function(x){ const v = parseInt(x, 10); return isFinite(v) ? v : 0; }) : [],
-    names: Array.isArray(o.nm) ? o.nm.slice(0, URL_MAX_TONES).map(String) : [],
+    names: Array.isArray(o.nm) ? o.nm.slice(0, URL_MAX_TONES).map(x => urlSafeText(x, 12)) : [],
     kind: o.k === 1 ? "secondary" : "borrow",
-    roman: String(o.rm || ""),
-    symbol: String(o.sy || ""),
+    roman: urlSafeText(o.rm),
+    symbol: urlSafeText(o.sy),
   };
 }
 
@@ -75,7 +84,9 @@ function urlDeckToParam(slots){
   return out;
 }
 
-function urlDeckFromParam(arr, isMode){
+/* modeLen(id) 可选：给出该槽位音阶的音数，用来把 d 收敛到音阶长度内。
+   不传时保持旧口径（只验 0..11），供老链接与单元测试沿用。 */
+function urlDeckFromParam(arr, isMode, modeLen){
   if(!Array.isArray(arr)) return null;
   const out = [];
   for(let i = 0; i < arr.length; i++){
@@ -88,7 +99,8 @@ function urlDeckFromParam(arr, isMode){
       continue;
     }
     const d = parseInt(o.d, 10);
-    if(!isFinite(d) || d < 0 || d > 11){ out.push(null); continue; }
+    const cap = (typeof modeLen === "function") ? (parseInt(modeLen(o.m), 10) || 0) : 0;
+    if(!isFinite(d) || d < 0 || d > 11 || (cap > 0 && d >= cap)){ out.push(null); continue; }
     const n = parseInt(o.n, 10);
     out.push({
       m: (typeof isMode === "function" && isMode(o.m)) ? o.m : null,

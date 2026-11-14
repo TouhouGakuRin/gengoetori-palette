@@ -24,7 +24,10 @@ const JUST_RATIO = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 
 
 // 以 tonicPc 为主音的纯律频率（主音那个八度仍按十二平均律定，才和 drone 对得上）
 function justFreq(midi, tonicPc, a4){
-  const ref = (a4 === undefined || a4 === null) ? A4_DEFAULT : a4;
+  // 与 freqOf 同一个回退口径：没传 a4 就读 state.a4，否则纯律+改过 A4 时整条进行音高会错
+  const ref = (a4 === undefined || a4 === null)
+    ? (typeof state !== "undefined" && state.a4 ? state.a4 : A4_DEFAULT)
+    : a4;
   const d = ((midi - tonicPc) % 12 + 12) % 12;
   const rootMidi = midi - d;
   return ref * Math.pow(2, (rootMidi - 69) / 12) * JUST_RATIO[d];
@@ -79,6 +82,9 @@ function planChord(rootAbs, tonesAbs, o){
 // 调式的第 idx 级：voiced=true 时按当前排列/转位（chordVoicing）发声，否则按密集叠三度
 function planDegree(mode, idx, tonic, o){
   o = o || {};
+  /* H2 的原始崩溃点：调用方可能送来切调式前留下的级数，mode.pcs[idx] 会拿到 undefined，
+     root 变 NaN 后整串 midi 都是 NaN。入口统一收敛（与 chordDegrees 同一口径）。 */
+  idx = clampDeg(idx, mode);
   if(o.voiced){
     const v = chordVoicing(mode, idx, { inv: o.inv, spread: o.spread, voicing: o.voicing, size: o.size });
     const root = 48 + (o.oct || 0) * 12 + ((tonic.pc + mode.pcs[idx]) % 12);
@@ -140,8 +146,12 @@ function timbreOf(kind){ return TIMBRES[kind] || TIMBRES.tri; }
 function setTimbre(kind){ AUDIO_TIMBRE = TIMBRES[kind] ? kind : "tri"; }
 function timbreName(kind){ return timbreOf(kind).cn; }
 
-function freqFor(midi, a4){
-  return AUDIO_TUNING === "just" ? justFreq(midi, TUNING_ROOT, a4) : freqOf(midi, a4);
+/* tonicPc 只给「这次播放」用：听辨测验的主音是随机的，不能借用应用当前主音当纯律参照。
+   不传时仍用全局 TUNING_ROOT（音阶页 / 和弦卡 / A-B 等所有既有入口）。 */
+function freqFor(midi, a4, tonicPc){
+  const root = (tonicPc === undefined || tonicPc === null)
+    ? TUNING_ROOT : ((tonicPc % 12) + 12) % 12;
+  return AUDIO_TUNING === "just" ? justFreq(midi, root, a4) : freqOf(midi, a4);
 }
 
 function audio(){
@@ -187,12 +197,12 @@ function stopVoices(fade){
 
 /* 单个音：按当前音色叠分音 → 低通 → 包络。
    keyScale 的音色（钢琴、电钢）在高音区收得快一点，听上去才像真的琴。 */
-function toneAt(midi, when, dur, vel, a4){
+function toneAt(midi, when, dur, vel, a4, tonicPc){
   const ctx = audio();
   vel = vel === undefined ? 1 : vel;
   const T = timbreOf(AUDIO_TIMBRE);
   const t = ctx.currentTime + (when || 0);
-  const f = freqFor(midi, a4);
+  const f = freqFor(midi, a4, tonicPc);
 
   const filt = ctx.createBiquadFilter();
   filt.type = "lowpass";
@@ -235,11 +245,12 @@ function tone(midi, when, dur, vel){
 }
 
 // 把一份计划一次性排进时间线（先让上一批让路）
-function playEvents(events, a4){
+// tonicPc 可选：覆盖本次播放的纯律参照主音（听辨测验用），不改全局 TUNING_ROOT
+function playEvents(events, a4, tonicPc){
   if(!events || !events.length) return;
   audio();
   stopVoices();
-  events.forEach(e => toneAt(e.midi, e.at, e.dur, e.vel, a4));
+  events.forEach(e => toneAt(e.midi, e.at, e.dur, e.vel, a4, tonicPc));
 }
 
 /* ---------- 持续主音（drone）：垫在下面当调性锚点 ---------- */
@@ -256,7 +267,8 @@ function droneMidi(tonicPc){
 
 function droneOn(tonicPc, a4){
   const midi = droneMidi(tonicPc);
-  if(DRONE && DRONE.midi === midi) return;
+  // A4 变了也要重建振荡器，否则 drone 留在旧频率、与已移调的上层音刺耳失谐
+  if(DRONE && DRONE.midi === midi && DRONE.a4 === a4) return;
   droneOff();
   const ctx = audio();
   const f = freqOf(midi, a4);
@@ -277,7 +289,7 @@ function droneOn(tonicPc, a4){
   const t = ctx.currentTime;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(0.085, t + 0.7);
-  DRONE = {midi: midi, g: g, oscs: oscs, filt: filt};
+  DRONE = {midi: midi, a4: a4, g: g, oscs: oscs, filt: filt};
 }
 
 function droneOff(){

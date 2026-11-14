@@ -16,7 +16,9 @@ const DEG_ROMAN = ["I", "bII", "II", "bIII", "III", "IV", "bV", "V", "bVI", "VI"
 function romanShape(base, iv){
   const third = iv.indexOf(3) >= 0 ? 3 : (iv.indexOf(4) >= 0 ? 4 : -1);
   let s = third === 3 ? base.toLowerCase() : base;
-  if(iv.indexOf(6) >= 0 || iv.indexOf(2) >= 0) s += "°";
+  /* 减三和弦必须「小三度 + 减五度」同时成立。属七降五(有 b5 但有大三度)
+     与挂二和弦(含 2)都不是减和弦，以前一律加 ° 会写出 V7/V° 这种错记号。 */
+  if(third === 3 && iv.indexOf(6) >= 0) s += "°";
   else if(iv.indexOf(8) >= 0) s += "+";
   return s;
 }

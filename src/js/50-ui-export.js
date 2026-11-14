@@ -18,9 +18,14 @@
 const EXPORT_TARGETS = { staff: "#staff", chord: "#chordStaff", deck: "#deckStaff" };
 const EXPORT_PAD = 12;
 
+/* applyHash 在首轮 renderAll 之前跑；renderDetail 的 stamp 变化会清掉 state.chordEx，
+   用这个一次性标志让「链接带来的借用和弦」活过第一轮渲染（hashchange 二次触发不受影响）。 */
+let chordExPending = false;
+
 // 与 shell.html 里 .svstaff 那套规则同源，去掉前缀并把 currentColor 落到具体颜色；
 // .brk（直连谱号两端短横）与 .warn（违规红点）以前漏了，导出后会丢样式。
 // @WARN@ 按主题替换（深色 #ff8f7a / 浅色 #c0392b，同 var(--bad)）。
+// @WARM@ 是特征音染色符头的暖色（同 var(--warm)）：PR#1 补了 .brk/.warn，这里漏了 .hi。
 const EXPORT_CSS = [
   "svg{color:@FG@}",
   'text{font-family:Bravura,"Bravura Text",serif}',
@@ -34,14 +39,15 @@ const EXPORT_CSS = [
   ".brc{fill:currentColor;opacity:.95;font-size:40px}",
   ".brk{fill:none;stroke:currentColor;stroke-width:1.3;opacity:.9;stroke-linecap:round}",
   ".warn{fill:@WARN@;stroke:none}",
+  ".nh.hi{fill:@WARM@}",
   '.lab,.cnm{font-family:ui-sans-serif,system-ui,"Microsoft YaHei",sans-serif;text-anchor:middle;fill:currentColor;opacity:.72;font-size:11px}',
 ].join("");
 
 function exportPalette(){
   const light = (document.documentElement.dataset.theme || "dark") === "light";
   return light
-    ? { fg:"#14181f", bg:"#ffffff", warn:"#c0392b" }
-    : { fg:"#e9edf6", bg:"#14181e", warn:"#ff8f7a" };
+    ? { fg:"#14181f", bg:"#ffffff", warn:"#c0392b", warm:"#c46d13" }
+    : { fg:"#e9edf6", bg:"#14181e", warn:"#ff8f7a", warm:"#ffb86b" };
 }
 
 /* Bravura 以 base64 内嵌进导出文件：SVG-as-<img> 和别处打开的 .svg 都加载不了
@@ -83,7 +89,7 @@ async function staffSnapshot(svg, pal){
   const h = vb[3] || parseFloat(svg.getAttribute("height")) || 120;
   const W = w + EXPORT_PAD * 2, H = h + EXPORT_PAD * 2;
   const css = (fontCSS ? fontCSS : "")
-    + EXPORT_CSS.replace(/@FG@/g, pal.fg).replace(/@WARN@/g, pal.warn);
+    + EXPORT_CSS.replace(/@FG@/g, pal.fg).replace(/@WARN@/g, pal.warn).replace(/@WARM@/g, pal.warm);
   const m = typeof activeMode === "function" ? activeMode() : null;
   const t = typeof tonicObj === "function" ? tonicObj() : null;
   const what = (m ? m.cn : "谱面") + (t ? " · " + noteName(t.li, t.acc) : "");
@@ -207,15 +213,18 @@ function applyHash(){
   if(map.m && byId(map.m)){ state.A = map.m; hit = true; }
   const tn = parseInt(map.t, 10);
   if(isFinite(tn) && TONICS[tn]){ state.tone = tn; hit = true; }
-  if(map.v === "3" || map.v === "7"){ state.voicing = map.v; hit = true; }
+  // 走 store.set 才会持久化：这两个键不在 SESSION_KEYS 里，直接赋值刷新后会回旧值
+  if(map.v === "3" || map.v === "7"){ store.set("voicing", map.v); hit = true; }
   const oc = parseInt(map.o, 10);
-  if(isFinite(oc)){ state.oct = Math.max(-2, Math.min(2, oc)); hit = true; }
+  if(isFinite(oc)){ store.set("oct", Math.max(-2, Math.min(2, oc))); hit = true; }
 
   if(map.d2 || map.d){
     if(typeof deck !== "undefined"){
       let slots = null;
       if(map.d2){
-        try{ slots = urlDeckFromParam(JSON.parse(decodeURIComponent(map.d2)), byId); }catch(_){}
+        // 槽位级数 d 要按槽位音阶的实际音数收敛，否则七声 VII 级的链接切到五声就崩视图
+        const modeLen = id => { const m = byId(id || state.A); return m ? m.pcs.length : 0; };
+        try{ slots = urlDeckFromParam(JSON.parse(decodeURIComponent(map.d2)), byId, modeLen); }catch(_){}
       }
       if(!slots && map.d) slots = legacyDeckSlots(map.d);   // 老链接照旧能开
       if(slots){
@@ -233,7 +242,7 @@ function applyHash(){
   if(map.x){
     try{
       const ex = urlExFromParam(JSON.parse(decodeURIComponent(map.x)));
-      if(ex){ state.chordEx = ex; hit = true; }
+      if(ex){ state.chordEx = ex; chordExPending = true; hit = true; }
     }catch(_){}
   }
   hashLast = raw;

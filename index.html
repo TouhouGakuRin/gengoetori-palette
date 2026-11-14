@@ -477,6 +477,9 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .pentaopts button{font:inherit;font-size:12px;padding:3px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--dim2);cursor:pointer;transition:.12s}
 .pentaopts button:hover{color:var(--txt)}
 .pentaopts button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+/* 加偏音后五度叠置不可用：留在原位但点不动，别让它消失得莫名其妙 */
+.pentaopts button:disabled{opacity:.4;cursor:not-allowed}
+.pentaopts button:disabled:hover{color:var(--dim2)}
 
 /* 焦点可见：键盘用户要能看到自己在哪个控件上（放在最后，盖过各处 outline:none） */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -835,7 +838,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 
       <div class="setrow">
         <span class="setlab">版本</span>
-        <span class="setver">v1.1.4 · 单文件 Web 应用 · 代码 MIT</span>
+        <span class="setver">v1.1.5 · 单文件 Web 应用 · 代码 MIT</span>
       </div>
     </div>
 
@@ -872,11 +875,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
   <span class="sf-sep">·</span>
   <span class="sf-lic">图标：東方Project 同人二次创作（画师 小旗）</span>
   <span class="sf-sep">·</span>
-  <span class="sf-ver">v1.1.4</span>
+  <span class="sf-ver">v1.1.5</span>
 </footer>
 
 <script>
-/* built 2026-11-01T16:33:31.998Z · 30 modules */
+/* built 2026-11-14T12:40:16.754Z · 30 modules */
 
 /* ===== 00-core-pitch.js ===== */
 /* 幻歌鸟调色盘 · Gengoetori Palette
@@ -892,6 +895,13 @@ const LPC = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 const CHROM = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
 
 const ROMAN = ["I","II","III","IV","V","VI","VII"];
+
+/* 外部文本（URL hash / 备份 JSON 里的和弦级数记号）会进 innerHTML 或 SVG 文本节点，
+   统一在这里转义：& < > " ' 五个字符覆盖 HTML 与 XML 两种上下文。 */
+function escapeHtml(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[c]);
+}
 
 /* 三度叠置时「某个音程该用哪个字母」：下标是相对根音的半音数，值是字母偏移。
    有了它，C 上的小三度才会写成 Eb 而不是 D#（谱面上不会造出假二度）。 */
@@ -1588,6 +1598,16 @@ function sizeCap(mode){
   return chordDegreeMax(mode ? mode.pcs.length : 7);
 }
 
+/* 级数收敛：URL / 备份 / 切调式都可能留下比当前音阶还大的 d。
+   上界钳到最后一个音，负数按环绕归一，避免 pcs[idx] 取到 undefined 后整条音集变 NaN。 */
+function clampDeg(idx, mode){
+  const n = (mode && mode.pcs && mode.pcs.length) ? mode.pcs.length : 7;
+  const i = Math.round(Number(idx));
+  if(!isFinite(i)) return 0;
+  if(i < 0) return ((i % n) + n) % n;
+  return Math.min(i, n - 1);
+}
+
 // 和弦音数：七声取 4（七和弦），五/六声只有 3 个不重复的「隔一音」位置；
 // 五声 + 五度叠置时按「三音/四音」开关取 3/4（与筹码的默认路径同一个口径）
 function chordSize(mode, voicing){
@@ -1623,6 +1643,17 @@ function quintalDegrees(m, idx, size){
     out.push(j);
     cur = pcs[j];
   }
+  /* 日本五声（都节/平调子/岩户）里找不到连续纯五度，上面会 break 到只剩 1 个音，
+     以前直接返回会产出 sym="()" 的空和弦并污染 SATB / MIDI。补不到三音就退回默认叠法。 */
+  if(out.length < Math.min(3, size)){
+    const alt = [], n = pcs.length, cap = Math.min(Math.max(size, 3), chordDegreeMax(n));
+    for(let k = 0; k < cap; k++){
+      const j = (idx + 2 * k) % n;
+      if(alt.indexOf(j) >= 0) break;
+      alt.push(j);
+    }
+    return alt;
+  }
   return out;
 }
 
@@ -1634,6 +1665,7 @@ function chordDegrees(idx, voicing, mode, size){
     || (typeof baseMode === "function" ? baseMode() : null)
     || (typeof byId === "function" && typeof state !== "undefined" ? byId(state.A) : null);
   const n = m ? m.pcs.length : 7;
+  idx = clampDeg(idx, m);          // 外部传入的级数先收敛，负数取模也不再出错
   const cap = Math.min(CHORD_MAX, n);
   const want = size ? Math.max(2, Math.min(cap, Math.round(size))) : 0;
   const useQ = m && n === 5 && typeof state !== "undefined" && state.pentaChord === "quintal";
@@ -1702,6 +1734,7 @@ function symbolOf(iv){
 function chordOf(mode, idx, voicing, size){
   const v = voicing || state.voicing || "7";
   const pcs = mode.pcs;
+  idx = clampDeg(idx, mode);       // degs 按归一后的 idx 生成，pcs[idx] 必须是同一个
   const idxs = chordDegrees(idx, v, mode, size);
   const iv = idxs.map(j => (pcs[j] - pcs[idx] + 12) % 12).sort((a,b)=>a-b);
   return {idx, tones: idxs.map(j => pcs[j]), iv, sym: symbolOf(iv), key: iv.join(","), degs: idxs};
@@ -1709,6 +1742,7 @@ function chordOf(mode, idx, voicing, size){
 
 function chordVoicing(mode, idx, opts){
   const o = opts || {};
+  idx = clampDeg(idx, mode);
   const degs = chordDegrees(idx, o.voicing, mode, o.size);
   const n = degs.length;
   const inv = Math.min(Math.max(o.inv !== undefined ? o.inv : (state.inv || 0), 0), n - 1);
@@ -1911,7 +1945,14 @@ function charNotes(mode){
 
 const TPQ = 480;
 
-function vlq(n){ const o = [n & 0x7f]; n >>= 7; while(n){ o.push((n & 0x7f) | 0x80); n >>= 7; } return o.reverse(); }
+function vlq(n){
+  // 负数算术右移恒为 -1，会让 while 永不结束；导出的 delta-time 不该为负，入口先兜住
+  n = Math.floor(Number(n));
+  if(!isFinite(n) || n < 0) n = 0;
+  const o = [n & 0x7f]; n >>= 7;
+  while(n){ o.push((n & 0x7f) | 0x80); n >>= 7; }
+  return o.reverse();
+}
 
 function buildMidi(notes, bpm, name){
   const evs = [];
@@ -2293,6 +2334,13 @@ function satbSequence(specs, opts){
     cost.push(pools[i] ? pools[i].map(c => c.sc) : []);
     back.push(pools[i] ? pools[i].map(() => -1) : []);
   }
+  // 首槽没有 prev，补一次间距硬罚，和后续槽位同一口径
+  if(pools[0]){
+    for(let j = 0; j < pools[0].length; j++){
+      cost[0][j] += spacingViolations(pools[0][j])
+        .reduce((s, h) => s + (SATB_WEIGHT[h.kind] || 20), 0);
+    }
+  }
   for(let i = 1; i < n; i++){
     if(!pools[i] || !pools[i - 1]) continue;
     for(let b = 0; b < pools[i].length; b++){
@@ -2331,7 +2379,8 @@ function seventhOf(tones){
   const t = [...new Set(tones.map(p => ((p % 12) + 12) % 12))];
   if(t.length < 4) return null;
   const iv = ((t[3] - t[0]) % 12 + 12) % 12;
-  return (iv === 10 || iv === 11) ? t[3] : null;
+  // 9 = 减七度（减七和弦），同样要下行解决；只认 10/11 会整类漏检
+  return (iv === 9 || iv === 10 || iv === 11) ? t[3] : null;
 }
 
 // 每条违规的罚分。硬规矩（平行五八、导音、间距）压过候选本身十几分的软分差，
@@ -2343,6 +2392,21 @@ const SATB_WEIGHT = {
   "三全音跳进": 30,
   "隐伏八度": 20, "隐伏五度": 16,
 };
+
+// 上三声部相邻不超过八度，男高音与男低音不超过十二度。
+// 抽成独立函数：satbCheck 只查 cur，而 DP 的首槽与体检的首个 voicing 没有 prev，
+// 以前从不被硬规矩检查，导致同一 voicing 因位置不同得分不同。
+const SATB_GAPS = [["S","A",12,"上两声部不超过八度"],
+  ["A","T",12,"中两声部不超过八度"], ["T","B",19,"T–B 不超过十二度"]];
+function spacingViolations(v){
+  const out = [];
+  if(!v) return out;
+  for(const [x, y, mx, why] of SATB_GAPS){
+    const g = v[x] - v[y];
+    if(g > mx) out.push({kind:"间距过大", voices:x + "/" + y, detail:`${g} 半音 · ${why}`});
+  }
+  return out;
+}
 
 /* 相邻两个和弦的检查。opts = {tonic: 主音 pc, seven: 上一和弦七音 pc, nextTones: 这一和弦的音级}
    返回 [{kind, voices, detail}]，空数组表示没查到大问题。
@@ -2361,6 +2425,10 @@ function satbCheck(prev, cur, opts){
     if(p0 <= 0 || p1 <= 0) continue;                          // 交叉或同度，不归这一条管
     const d0 = pcOf(p0), d1 = pcOf(p1);
     if(d0 !== d1) continue;
+    /* 平行五/八度的定义要求两个声部「同向运动」：静止（oblique）、
+       斜行、反行到同类纯音程都不算平行，以前漏了这条判据会重罚合法进行。 */
+    const dx = cur[x] - prev[x], dy = cur[y] - prev[y];
+    if(dx === 0 || dy === 0 || Math.sign(dx) !== Math.sign(dy)) continue;
     if(d0 === 7) out.push({kind:"平行五度", voices:x + "/" + y, detail:"两声部同向进到纯五度"});
     else if(d0 === 0) out.push({kind:"平行八度", voices:x + "/" + y, detail:"两声部同向进到纯八度"});
   }
@@ -2395,12 +2463,8 @@ function satbCheck(prev, cur, opts){
     }
   }
 
-  // 5. 间距：上三声部相邻不超过八度，男高音与男低音不超过十二度
-  const gaps = [["S","A",12,"上两声部不超过八度"],["A","T",12,"中两声部不超过八度"],["T","B",19,"T–B 不超过十二度"]];
-  for(const [x, y, mx, why] of gaps){
-    const g = cur[x] - cur[y];
-    if(g > mx) out.push({kind:"间距过大", voices:x + "/" + y, detail:`${g} 半音 · ${why}`});
-  }
+  // 5. 间距：只查当前 voicing（每个 voicing 在转移里恰好查一次，不重复计罚）
+  out.push(...spacingViolations(cur));
 
   // 6. 旋律里的三全音跳进（增四度/减五度），传统四部写作要避免
   for(const v of ["S","A","T","B"]){
@@ -2415,7 +2479,11 @@ function satbCheck(prev, cur, opts){
 function satbViolations(voicings, opts){
   opts = opts || {};
   const out = [];
-  for(let k = 1; k < (voicings || []).length; k++){
+  const list = voicings || [];
+  if(list.length && list[0]){
+    for(const h of spacingViolations(list[0])) out.push(Object.assign({from: 0, to: 0}, h));
+  }
+  for(let k = 1; k < list.length; k++){
     const a = voicings[k - 1], b = voicings[k];
     if(!a || !b) continue;
     const seven = opts.sevenths ? opts.sevenths[k - 1] : null;
@@ -2459,10 +2527,12 @@ function noteValueOf(beats){
   return {v: 1, n: "quarter", dots: 0};
 }
 
-const DUR_CN = {1: "四分音符", 2: "二分音符", 3: "附点二分", 4: "全音符"};
+const DUR_CN = {1: "四分音符", 2: "二分音符", 3: "附点二分", 4: "全音符",
+  6: "附点全音符", 8: "二全音符"};
 function durationLabel(beats){
   const v = Math.round(beats);
-  return `${v} 拍 · ${DUR_CN[v] || "四分音符"}`;
+  // 5/7/9+ 拍没有单音符时值，兜底别再写「四分音符」误导
+  return `${v} 拍 · ${DUR_CN[v] || "长音值"}`;
 }
 
 /* 把一段 [pos, pos+len) 切成「能记谱」的片段。三条规则（记谱通例）：
@@ -2537,7 +2607,9 @@ const DEG_ROMAN = ["I", "bII", "II", "bIII", "III", "IV", "bV", "V", "bVI", "VI"
 function romanShape(base, iv){
   const third = iv.indexOf(3) >= 0 ? 3 : (iv.indexOf(4) >= 0 ? 4 : -1);
   let s = third === 3 ? base.toLowerCase() : base;
-  if(iv.indexOf(6) >= 0 || iv.indexOf(2) >= 0) s += "°";
+  /* 减三和弦必须「小三度 + 减五度」同时成立。属七降五(有 b5 但有大三度)
+     与挂二和弦(含 2)都不是减和弦，以前一律加 ° 会写出 V7/V° 这种错记号。 */
+  if(third === 3 && iv.indexOf(6) >= 0) s += "°";
   else if(iv.indexOf(8) >= 0) s += "+";
   return s;
 }
@@ -2685,7 +2757,10 @@ const JUST_RATIO = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 
 
 // 以 tonicPc 为主音的纯律频率（主音那个八度仍按十二平均律定，才和 drone 对得上）
 function justFreq(midi, tonicPc, a4){
-  const ref = (a4 === undefined || a4 === null) ? A4_DEFAULT : a4;
+  // 与 freqOf 同一个回退口径：没传 a4 就读 state.a4，否则纯律+改过 A4 时整条进行音高会错
+  const ref = (a4 === undefined || a4 === null)
+    ? (typeof state !== "undefined" && state.a4 ? state.a4 : A4_DEFAULT)
+    : a4;
   const d = ((midi - tonicPc) % 12 + 12) % 12;
   const rootMidi = midi - d;
   return ref * Math.pow(2, (rootMidi - 69) / 12) * JUST_RATIO[d];
@@ -2740,6 +2815,9 @@ function planChord(rootAbs, tonesAbs, o){
 // 调式的第 idx 级：voiced=true 时按当前排列/转位（chordVoicing）发声，否则按密集叠三度
 function planDegree(mode, idx, tonic, o){
   o = o || {};
+  /* H2 的原始崩溃点：调用方可能送来切调式前留下的级数，mode.pcs[idx] 会拿到 undefined，
+     root 变 NaN 后整串 midi 都是 NaN。入口统一收敛（与 chordDegrees 同一口径）。 */
+  idx = clampDeg(idx, mode);
   if(o.voiced){
     const v = chordVoicing(mode, idx, { inv: o.inv, spread: o.spread, voicing: o.voicing, size: o.size });
     const root = 48 + (o.oct || 0) * 12 + ((tonic.pc + mode.pcs[idx]) % 12);
@@ -2801,8 +2879,12 @@ function timbreOf(kind){ return TIMBRES[kind] || TIMBRES.tri; }
 function setTimbre(kind){ AUDIO_TIMBRE = TIMBRES[kind] ? kind : "tri"; }
 function timbreName(kind){ return timbreOf(kind).cn; }
 
-function freqFor(midi, a4){
-  return AUDIO_TUNING === "just" ? justFreq(midi, TUNING_ROOT, a4) : freqOf(midi, a4);
+/* tonicPc 只给「这次播放」用：听辨测验的主音是随机的，不能借用应用当前主音当纯律参照。
+   不传时仍用全局 TUNING_ROOT（音阶页 / 和弦卡 / A-B 等所有既有入口）。 */
+function freqFor(midi, a4, tonicPc){
+  const root = (tonicPc === undefined || tonicPc === null)
+    ? TUNING_ROOT : ((tonicPc % 12) + 12) % 12;
+  return AUDIO_TUNING === "just" ? justFreq(midi, root, a4) : freqOf(midi, a4);
 }
 
 function audio(){
@@ -2848,12 +2930,12 @@ function stopVoices(fade){
 
 /* 单个音：按当前音色叠分音 → 低通 → 包络。
    keyScale 的音色（钢琴、电钢）在高音区收得快一点，听上去才像真的琴。 */
-function toneAt(midi, when, dur, vel, a4){
+function toneAt(midi, when, dur, vel, a4, tonicPc){
   const ctx = audio();
   vel = vel === undefined ? 1 : vel;
   const T = timbreOf(AUDIO_TIMBRE);
   const t = ctx.currentTime + (when || 0);
-  const f = freqFor(midi, a4);
+  const f = freqFor(midi, a4, tonicPc);
 
   const filt = ctx.createBiquadFilter();
   filt.type = "lowpass";
@@ -2896,11 +2978,12 @@ function tone(midi, when, dur, vel){
 }
 
 // 把一份计划一次性排进时间线（先让上一批让路）
-function playEvents(events, a4){
+// tonicPc 可选：覆盖本次播放的纯律参照主音（听辨测验用），不改全局 TUNING_ROOT
+function playEvents(events, a4, tonicPc){
   if(!events || !events.length) return;
   audio();
   stopVoices();
-  events.forEach(e => toneAt(e.midi, e.at, e.dur, e.vel, a4));
+  events.forEach(e => toneAt(e.midi, e.at, e.dur, e.vel, a4, tonicPc));
 }
 
 /* ---------- 持续主音（drone）：垫在下面当调性锚点 ---------- */
@@ -2917,7 +3000,8 @@ function droneMidi(tonicPc){
 
 function droneOn(tonicPc, a4){
   const midi = droneMidi(tonicPc);
-  if(DRONE && DRONE.midi === midi) return;
+  // A4 变了也要重建振荡器，否则 drone 留在旧频率、与已移调的上层音刺耳失谐
+  if(DRONE && DRONE.midi === midi && DRONE.a4 === a4) return;
   droneOff();
   const ctx = audio();
   const f = freqOf(midi, a4);
@@ -2938,7 +3022,7 @@ function droneOn(tonicPc, a4){
   const t = ctx.currentTime;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(0.085, t + 0.7);
-  DRONE = {midi: midi, g: g, oscs: oscs, filt: filt};
+  DRONE = {midi: midi, a4: a4, g: g, oscs: oscs, filt: filt};
 }
 
 function droneOff(){
@@ -3079,8 +3163,9 @@ function drawStaff(groups, opts){
     const body = paintChord(g, cx, {BOT: BOT, TOP: TOP, y: y, f: f});
     // mark：给每组包一个带序号的 <g>，播放时按序号高亮。不传就不包，保持基线不变。
     o += opts.mark ? `<g class="ch" data-gi="${gi}">${body}</g>` : body;
-    if(g.label) o += `<text class="lab" x="${cx}" y="15">${g.label}</text>`;
-    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${g.sub}</text>`;
+    // label/sub 可能来自 URL 或备份导入的借用和弦，拼进 SVG 文本节点前必须转义
+    if(g.label) o += `<text class="lab" x="${cx}" y="15">${escapeHtml(g.label)}</text>`;
+    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${escapeHtml(g.sub)}</text>`;
     // 声部进行违规：在标签上方点一个小红点（只有进行台的四声部会传 warn）
     if(g.warn) o += `<circle class="warn" cx="${cx}" cy="${(g.label ? 3 : 8)}" r="2.6"/>`;
   });
@@ -3341,8 +3426,9 @@ function drawStaffMetered(groups, opts){
     const i = firstPiece[gi];
     if(i === undefined) return;
     const cx = sh.cols[i].cx;
-    if(g.label) o += `<text class="lab" x="${cx}" y="15">${g.label}</text>`;
-    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${g.sub}</text>`;
+    // label/sub 可能来自 URL 或备份导入的借用和弦，拼进 SVG 文本节点前必须转义
+    if(g.label) o += `<text class="lab" x="${cx}" y="15">${escapeHtml(g.label)}</text>`;
+    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${escapeHtml(g.sub)}</text>`;
     if(g.warn) o += `<circle class="warn" cx="${cx}" cy="${(g.label ? 3 : 8)}" r="2.6"/>`;
   });
 
@@ -3367,7 +3453,9 @@ function drawRows(groups, opts){
   }
   const W = Math.max(...parts.map(p => p.W));
   const H = yy - gap;
-  return {markup: `<g transform="scale(${K})">${body}</g>`, W: W * K, H: H * K, f: parts[0].f, cost: 0};
+  // 折行后把各行的临时记号代价累加，别让「另 N 处临时记号」提示恒为 0
+  return {markup: `<g transform="scale(${K})">${body}</g>`, W: W * K, H: H * K, f: parts[0].f,
+    cost: parts.reduce((s, p) => s + (p.cost || 0), 0)};
 }
 
 /* 一行放不下就把大谱表折成多行 —— 断点只落在小节线上（真正的乐谱绝不会从小节中间换行）。
@@ -3397,7 +3485,7 @@ function drawGrandSystems(tre, bas, opts, planT, planB, share){
   const pick = (plan, idx) => idx.map(i => {
     const it = plan.items[i];
     if(it.rest) return {dur: it.len, rest: true, notes: []};
-    return {dur: it.len, notes: it.g.notes, label: it.g.label, sub: it.g.sub};
+    return {dur: it.len, notes: it.g.notes, label: it.g.label, sub: it.g.sub, warn: it.g.warn};
   });
 
   const K = opts.scale || 1.6, gap = 24;
@@ -3584,6 +3672,8 @@ function modeKeyNotes(){
 let staffView = "scale";
 
 function renderStaff(){
+  // 谱面整块重写前先撤掉旧的高亮定时器：否则播放途中换调式，剩余音符会点亮新谱面的错位
+  if(typeof clearMarks === "function") clearMarks();
   const m = activeMode();
   const gs = staffView === "scale" ? staffScaleGroups() : staffChordGroups();
   const r = drawRows(gs, {slotW: staffView === "scale" ? 46 : 64, maxSlots: 8,
@@ -3651,7 +3741,7 @@ function markPlan(plan, giOf){
 function renderChordStaff(){
   if(state.chordEx){ renderOutsideStaff(state.chordEx); return; }
   const m = activeMode(), t = tonicObj(), sp = spell(m, t);
-  const i = state.chord || 0;
+  const i = clampDeg(state.chord || 0, m);   // 切到音数更少的调式后别让 sp[i] 越界
   const c = chordOf(m, i);
   const v = chordVoicing(m, i);
   const r0 = 60 + t.pc + m.pcs[i];
@@ -3682,7 +3772,9 @@ function renderChordStaff(){
 function renderOutsideStaff(ex){
   const m = activeMode(), t = tonicObj();
   const base = 60 + ex.root;
-  const li0 = LETTERS.indexOf(ex.names[0][0]);
+  // URL/备份里的 ex 可能没带拼写（names:[]），照 47-ui-deck 的口径兜底，别让谱面整轮崩
+  const li0 = (ex.names && ex.names[0] && LETTERS.indexOf(ex.names[0][0]) >= 0)
+    ? LETTERS.indexOf(ex.names[0][0]) : 0;
   const sh = staffShift(base, ex.ivs);
   const notes = ex.ivs.map(iv => spellTone(li0, base, base + iv + sh));
   const g = [{label: ex.roman, sub: ex.symbol, notes: notes}];
@@ -4174,7 +4266,7 @@ function centerMapOn(id, dur){
     const v = mapViewBox();
     $("#map").setAttribute("viewBox", `${v.x.toFixed(2)} ${v.y.toFixed(2)} ${v.w.toFixed(2)} ${v.h.toFixed(2)}`);
     if(k < 1) mapState.anim = requestAnimationFrame(step);
-    else { mapClamp(); paintMap(); }        // 动画结束补一次重画，刷新标记的 k
+    else { mapClamp(); mapApply(); paintMap(); }   // mapClamp 会改 cx/cy，末帧 viewBox 要跟着刷
   };
   mapState.anim = requestAnimationFrame(step);
 }
@@ -4200,6 +4292,7 @@ const store = createStore({ b4:0, b7:0, pentaChord:"tertian",
   tuning: "et", drone: false, timbre: "tri", accent: "ice",
 });
 const state = store.all();
+let droneResumeBound = false;   // 重载后「drone=开」等首个用户手势恢复，避免自动播放策略拦截
 
 const $ = s => document.querySelector(s);
 const byId = id => MODES.find(m => m.id === id);
@@ -4256,9 +4349,23 @@ function syncAudioState(){
   const t = tonicObj();
   setTuning(state.tuning || "et", t.pc);
   if(typeof setTimbre === "function") setTimbre(state.timbre || "tri");
-  if(typeof droneIsOn === "function" && droneIsOn()){
-    if(state.drone) droneOn(t.pc, state.a4);
-    else droneOff();
+  if(typeof droneIsOn === "function"){
+    if(state.drone){
+      if(droneIsOn()) droneOn(t.pc, state.a4);
+      else if(typeof document !== "undefined" && !droneResumeBound){
+        /* 重载后 DRONE 是空的：按钮显示「开」却永远静音。注册一次性手势监听，
+           首个点击/按键落在手势内才创建 AudioContext 并把 drone 接回来。 */
+        droneResumeBound = true;
+        const wake = () => {
+          document.removeEventListener("pointerdown", wake);
+          document.removeEventListener("keydown", wake);
+          droneResumeBound = false;
+          if(state.drone && typeof droneOn === "function") droneOn(tonicObj().pc, state.a4);
+        };
+        document.addEventListener("pointerdown", wake);
+        document.addEventListener("keydown", wake);
+      }
+    }else if(droneIsOn()) droneOff();
   }
 }
 
@@ -4288,7 +4395,15 @@ function renderAll(){
 /* ---------- 换当前调式的唯一入口 ---------- */
 // 全站唯一的“换当前调式”入口：重渲染 + 地图把新调式移到画面中心
 function switchMode(id){
-  if(!byId(id)) return;
+  const m = byId(id);
+  if(!m) return;
+  // 选中级数可能来自音数更多的音阶（如半音阶 VII），不收敛会让和弦谱视图整块崩掉
+  state.chord = clampDeg(state.chord || 0, m);
+  /* 槽位里的级数同理：七声 VI 槽在工作台上选中后切五声，s.d=5 对 5 声越界，
+     deck 视图会整块抛错。跟全局音阶走的槽（s.m 为空）在这里一并收敛。 */
+  if(typeof deck !== "undefined" && deck && deck.slots){
+    for(const s of deck.slots) if(s && !s.m) s.d = clampDeg(s.d, m);
+  }
   store.set("A", id);   // 走仓库才会持久化（以前重启就丢）
   renderAll();
   if(mapState.pos) centerMapOn(id);
@@ -4525,7 +4640,12 @@ function renderDetail(env){
   const br = brightness(m);
 
   const stamp = m.id + "|" + t.pc + "|" + (state.voicing || "7");
-  if(stamp !== outsideStamp){ state.chordEx = null; outsideStamp = stamp; }
+  if(stamp !== outsideStamp){
+    // 首轮渲染的 stamp 必然变化，别把刚从 URL hash 解出来的借用和弦清掉
+    if(typeof chordExPending !== "undefined" && chordExPending) chordExPending = false;
+    else state.chordEx = null;
+    outsideStamp = stamp;
+  }
 
   $("#mTitle").innerHTML = `${m.cn}<small>${m.n} · 主音 ${noteName(t.li, t.acc)}</small>`;
 
@@ -4537,18 +4657,24 @@ function renderDetail(env){
     if(!isPen) po.innerHTML = "";          // 非五声：连 DOM 都不留，免得被 Tab 走到
     if(isPen){
       const b4 = state.b4 || 0, b7 = state.b7 || 0;
+      /* 五度叠置只对纯五声成立：挂上偏音是 6/7 声，纵合链上取相邻音会重复音高，
+         此时按钮留在原位但禁用（并说明已按三度叠置），不要像以前整组消失（AUD-L10）。 */
+      const qOK = m.pcs.length === 5;
+      const model = qOK && state.pentaChord === "quintal" ? "quintal" : "tertian";
       po.innerHTML = `<div class="pgrp"><span class="plab">旋宫</span>`
         + PENTA_NAMES.map((nm, i) => `<button data-pen="${PENTA_IDS[i]}" class="${PENTA_IDS[i] === state.A ? "on" : ""}">${nm}调式</button>`).join("")
         + `</div><div class="pgrp"><span class="plab">偏音 · 清角一侧</span>`
         + [[0, "无"], [5, "清角"], [6, "变徵"]].map(([v, nm]) => `<button data-b4="${v}" class="${v === b4 ? "on" : ""}">${nm}</button>`).join("")
         + `</div><div class="pgrp"><span class="plab">偏音 · 变宫一侧</span>`
         + [[0, "无"], [10, "闰"], [11, "变宫"]].map(([v, nm]) => `<button data-b7="${v}" class="${v === b7 ? "on" : ""}">${nm}</button>`).join("")
-        + (m.pcs.length === 5
-            ? `</div><div class="pgrp"><span class="plab">和弦构成</span>`
-              + [["tertian", "三度叠置"], ["quintal", "五度叠置"]].map(([v, nm]) =>
-                  `<button data-model="${v}" class="${v === (state.pentaChord || "tertian") ? "on" : ""}">${nm}</button>`).join("")
-              + `</div>`
-            : `</div>`);
+        + `</div><div class="pgrp"><span class="plab">和弦构成</span>`
+        + [["tertian", "三度叠置"], ["quintal", "五度叠置"]].map(([v, nm]) =>
+            `<button data-model="${v}" class="${v === model ? "on" : ""}"`
+            + (v === "quintal" && !qOK
+                ? ` disabled title="加偏音后是 ${m.pcs.length} 声；五度叠置只适用于纯五声，现在按三度叠置"`
+                : "")
+            + `>${nm}</button>`).join("")
+        + `</div>`;
     }
   }
 
@@ -4630,6 +4756,7 @@ function renderDetail(env){
   $("#cards").innerHTML = cards;
   $("#cards").querySelectorAll(".card").forEach(el => {
     el.onclick = () => {
+      if(typeof clearProgTimers === "function") clearProgTimers();   // 别让进行播放的定时器抢回选中态
       const i = +el.dataset.i;
       store.set("chord", i);
       state.chordEx = null;                       // 回到本位和弦，借来的那个取消选中
@@ -4716,9 +4843,28 @@ function renderSelects(env){
   $("#selB").value = state.B;
 }
 
+/* A/B 对比与「▶ 对比试听」看的是同一条音阶：旋宫偏音、变形滑杆都算进去，
+   否则面板说「A 多一个音」，耳朵听到的却是没加偏音的那条（AUD-L9）。
+   变形后两个级数可能滑到同一个音高，比较前按音高去重，免得「A 独有 N 个」把同一个音数两遍。 */
+function compareModeA(){
+  const m = (typeof activeMode === "function") ? activeMode()
+    : (typeof byId === "function" ? byId(state.A) : null);
+  if(!m || !m.pcs) return m;
+  const seen = new Set(), pcs = [], degNames = [];
+  for(let i = 0; i < m.pcs.length; i++){
+    const p = m.pcs[i];
+    if(seen.has(p)) continue;
+    seen.add(p); pcs.push(p);
+    if(m.degNames) degNames.push(m.degNames[i]);
+  }
+  const out = Object.assign({}, m, {pcs});
+  if(m.degNames) out.degNames = degNames;
+  return out;
+}
+
 function renderCompare(env){
   const { $, state, byId, tonicObj } = env;
-  const a = byId(state.A), b = byId(state.B), d = distance(a, b), t = tonicObj();
+  const a = compareModeA() || byId(state.A), b = byId(state.B), d = distance(a, b), t = tonicObj();
   const spA = spell(a, t), spB = spell(b, t);
 
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));
@@ -5009,8 +5155,8 @@ function deckMidis(){
       offs: x.v.off,
       tonesAbs: x.c.tones.map(pc => ((t.pc + pc) % 12 + 12) % 12),
       bassPc: ((t.pc + x.m.pcs[x.v.degs[0]]) % 12 + 12) % 12,
-      r0: base + x.m.pcs[s.d],
-      rootPc: ((t.pc + x.m.pcs[s.d]) % 12 + 12) % 12,
+      r0: base + x.m.pcs[clampDeg(s.d, x.m)],
+      rootPc: ((t.pc + x.m.pcs[clampDeg(s.d, x.m)]) % 12 + 12) % 12,
     });
   });
   if(deck.satb){
@@ -5041,7 +5187,7 @@ function deckAddEx(x){
   }
   const prev = deck.slots.filter(Boolean).pop();
   deck.slots[at] = {m: null, d: 0, n: x.tones.length, inv: 0, spread: "close",
-    beats: (prev && prev.beats) || 4, rest: false,
+    beats: (prev && prev.beats) || 2, rest: false,   // 编辑器把默认 2 拍存成 null，继承别抬成 4
     ex: {root: x.root, tones: x.tones.slice(), ivs: x.ivs.slice(), names: x.names.slice(),
       symbol: x.symbol, roman: x.roman, kind: x.kind}};
   deck.sel = at;
@@ -5086,12 +5232,15 @@ function loadDeck(){
             ex: {root: ((ex.root|0) % 12 + 12) % 12, tones: ex.tones.map(p => ((p|0) % 12 + 12) % 12),
               ivs: Array.isArray(ex.ivs) ? ex.ivs.slice(0, 8) : [],
               names: Array.isArray(ex.names) ? ex.names.slice(0, 8) : [],
-              symbol: String(ex.symbol || ""), roman: String(ex.roman || ""),
+              symbol: (typeof urlSafeText === "function" ? urlSafeText(ex.symbol) : String(ex.symbol || "")),
+              roman:  (typeof urlSafeText === "function" ? urlSafeText(ex.roman)  : String(ex.roman || "")),
               kind: ex.kind === "secondary" ? "secondary" : "borrow"}};
           return;
         }
         if(s && typeof s.d === "number" && s.d >= 0 && s.d < 12){
-          deck.slots[i] = {m: s.m || null, d: s.d|0, n: s.n ? Math.max(2, Math.min(CHORD_MAX, s.n|0)) : null,
+          // 存档可能来自音数更多的调式；把级数收敛到槽位音阶内，别让 sp[d] 越界
+          const mm = (typeof byId === "function" ? (byId(s.m) || byId(state.A)) : null);
+          deck.slots[i] = {m: s.m || null, d: clampDeg(s.d, mm), n: s.n ? Math.max(2, Math.min(CHORD_MAX, s.n|0)) : null,
             inv: s.inv ? Math.max(0, Math.min(9, s.inv|0)) : 0, spread: s.spread === "open" ? "open" : "close",
             beats: s.beats ? Math.max(1, Math.min(8, s.beats|0)) : null, rest: !!s.rest, ex: null};
         }
@@ -5152,15 +5301,16 @@ function renderDeck(){
       continue;
     }
     if(s.ex){
+      // ex 文本可能来自 URL / 备份 JSON，入 innerHTML 前统一转义
       h += `<div class="slot filled ex${sel}" draggable="true" data-i="${i}">`
-        + `<span class="r">${s.ex.roman}</span><span class="c">${s.ex.symbol}</span>`
+        + `<span class="r">${escapeHtml(s.ex.roman)}</span><span class="c">${escapeHtml(s.ex.symbol)}</span>`
         + `<span class="tag">${s.ex.kind === "secondary" ? "副属" : "借用"} · ${dur}拍</span></div>`;
       continue;
     }
-    const m = slotMode(s), sp = spell(m, t), {c, n} = slotChord(s);
+    const m = slotMode(s), sp = spell(m, t), {c, n} = slotChord(s), d = clampDeg(s.d, m);
     const own = !s.m || s.m === state.A;
     h += `<div class="slot filled${sel}" draggable="true" data-i="${i}">`
-      + `<span class="r">${sp[s.d].roman}</span><span class="c">${sp[s.d].name}${c.sym}</span>`
+      + `<span class="r">${sp[d].roman}</span><span class="c">${sp[d].name}${c.sym}</span>`
       + `<span class="tag${own ? " dim" : ""}">${own ? n + " 音" : shortModeName(m) + " · " + n + " 音"} · ${dur}拍</span></div>`;
   }
   $("#deck").innerHTML = h;
@@ -5208,9 +5358,9 @@ function renderDeckHint(){
   const parts = seq.map(i => {
     const s = deck.slots[i], m = slotMode(s), sp = spell(m, t);
     if(s.rest) return `休止·${slotDur(s)}拍`;
-    if(s.ex) return s.ex.roman;
-    const tag = (s.m && s.m !== state.A) ? `<i>${m.cn.slice(0,4)}</i>` : "";
-    return `${tag} ${sp[s.d].roman}`;
+    if(s.ex) return escapeHtml(s.ex.roman);
+    const tag = (s.m && s.m !== state.A) ? `<i>${escapeHtml(m.cn.slice(0,4))}</i>` : "";
+    return `${tag} ${sp[clampDeg(s.d, m)].roman}`;
   });
   let warn = "";
   if(deck.satb){
@@ -5337,7 +5487,9 @@ function renderDeckEditor(){
   const {c} = slotChord(s);
   /* 和弦音名要走「三度拼写 + 主音」这条正路：c.tones 是相对主音的音程，
      直接拿去查 sp 会落到 C 上的同名音（Eb 的 I 级会被写成 C E G B）。 */
-  const rootAbs = sp[s.d].abs, li0 = sp[s.d].li, rootMidi = 60 + rootAbs;
+  /* s.d 可能是切调式前留下的（七声 VII 槽 → 切五声），sp 只有 5 项，查表前先收敛 */
+  const sd = clampDeg(s.d, m);
+  const rootAbs = sp[sd].abs, li0 = sp[sd].li, rootMidi = 60 + rootAbs;
   const cNotes = c.tones.map(pc => {
     const abs = ((t.pc + pc) % 12 + 12) % 12;
     const midi = rootMidi + ((abs - rootAbs + 12) % 12);
@@ -5347,7 +5499,7 @@ function renderDeckEditor(){
     return LETTERS[nt.li] + accStr(nt.nacc);
   }).join(" ");
   document.getElementById("dePreview").innerHTML =
-    `<b>${sp[s.d].name}${c.sym}</b> <span class="dim2">${cNotes}</span>`;
+    `<b>${sp[sd].name}${c.sym}</b> <span class="dim2">${cNotes}</span>`;
 }
 
 /* ---------- 五线谱 ---------- */
@@ -5421,15 +5573,15 @@ function deckStaffGroups(warn){
       label = ex.roman;
       sym = ex.symbol;
     } else {
-      const m = slotMode(s), sp = spell(m, t), x = slotVoicing(s);
-      const li0 = sp[s.d].li, rootMidi = 60 + t.pc + m.pcs[s.d];
+      const m = slotMode(s), sp = spell(m, t), x = slotVoicing(s), d = clampDeg(s.d, m);
+      const li0 = sp[d].li, rootMidi = 60 + t.pc + m.pcs[d];
       notes = ms.map(v => {
         const pc = ((v % 12) + 12) % 12, k = sp.find(x => ((x.abs % 12) + 12) % 12 === pc);
         const alt = k ? {step: 0, li: k.li, nacc: k.nacc} : null;
         return pickSpelling(li0, rootMidi, v, alt);
       });
-      label = sp[s.d].roman;
-      sym = sp[s.d].name + (x.c.sym || "") + (x.v.inv > 0 ? "/" + sp[x.v.degs[0]].name : "");
+      label = sp[d].roman;
+      sym = sp[d].name + (x.c.sym || "") + (x.v.inv > 0 ? "/" + sp[x.v.degs[0]].name : "");
     }
     if(deck.satb){
       /* 四部和声：S/A 高音谱，T/B 低音谱；四行谱模式再拆成每人一行 */
@@ -5731,8 +5883,9 @@ function playQuiz(){
   /* 音阶 + 主和弦拼成一份计划一次排上：playEvents 每次都会清总线，
      分两次调用会把先排的音阶整体掐掉（只能听到最后的主和弦）。 */
   const o = withTune({});
+  // 第三个参数把纯律参照主音换成测验自己的随机主音，不改全局（否则纯律下音准全错）
   playEvents(planScale(quiz.m, t, o)
-    .concat(planDegree(quiz.m, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0, vel: 0.9}))), o.a4);
+    .concat(planDegree(quiz.m, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0, vel: 0.9}))), o.a4, t.pc);
 }
 
 function renderQuiz(){
@@ -5805,6 +5958,15 @@ function urlExToParam(ex){
   };
 }
 
+/* 分享链接 / 备份 JSON 里的级数记号会进 innerHTML 与 SVG 文本节点，
+   入口先按乐谱记号白名单清洗（渲染层另有 escapeHtml 兜底）。
+   只允许罗马数字、音名字母、升降增减号与常见分隔符，其余一律丢弃。 */
+function urlSafeText(s, max){
+  return String(s == null ? "" : s)
+    .replace(/[^A-Za-z0-9IVXivx#b\u266D\u266F\u00B0\u00F8+\-\s/()\u00B7.,]/g, "")
+    .slice(0, max || 24);
+}
+
 function urlExFromParam(o){
   if(!o || !Array.isArray(o.t) || !o.t.length) return null;
   const tones = o.t.slice(0, URL_MAX_TONES).map(urlMod12).filter(function(x){ return x !== null; });
@@ -5814,10 +5976,10 @@ function urlExFromParam(o){
     root: root,
     tones: tones,
     ivs: Array.isArray(o.iv) ? o.iv.slice(0, URL_MAX_TONES).map(function(x){ const v = parseInt(x, 10); return isFinite(v) ? v : 0; }) : [],
-    names: Array.isArray(o.nm) ? o.nm.slice(0, URL_MAX_TONES).map(String) : [],
+    names: Array.isArray(o.nm) ? o.nm.slice(0, URL_MAX_TONES).map(x => urlSafeText(x, 12)) : [],
     kind: o.k === 1 ? "secondary" : "borrow",
-    roman: String(o.rm || ""),
-    symbol: String(o.sy || ""),
+    roman: urlSafeText(o.rm),
+    symbol: urlSafeText(o.sy),
   };
 }
 
@@ -5844,7 +6006,9 @@ function urlDeckToParam(slots){
   return out;
 }
 
-function urlDeckFromParam(arr, isMode){
+/* modeLen(id) 可选：给出该槽位音阶的音数，用来把 d 收敛到音阶长度内。
+   不传时保持旧口径（只验 0..11），供老链接与单元测试沿用。 */
+function urlDeckFromParam(arr, isMode, modeLen){
   if(!Array.isArray(arr)) return null;
   const out = [];
   for(let i = 0; i < arr.length; i++){
@@ -5857,7 +6021,8 @@ function urlDeckFromParam(arr, isMode){
       continue;
     }
     const d = parseInt(o.d, 10);
-    if(!isFinite(d) || d < 0 || d > 11){ out.push(null); continue; }
+    const cap = (typeof modeLen === "function") ? (parseInt(modeLen(o.m), 10) || 0) : 0;
+    if(!isFinite(d) || d < 0 || d > 11 || (cap > 0 && d >= cap)){ out.push(null); continue; }
     const n = parseInt(o.n, 10);
     out.push({
       m: (typeof isMode === "function" && isMode(o.m)) ? o.m : null,
@@ -5976,9 +6141,14 @@ uiRegister("midiHint", renderMidiHint);
 const EXPORT_TARGETS = { staff: "#staff", chord: "#chordStaff", deck: "#deckStaff" };
 const EXPORT_PAD = 12;
 
+/* applyHash 在首轮 renderAll 之前跑；renderDetail 的 stamp 变化会清掉 state.chordEx，
+   用这个一次性标志让「链接带来的借用和弦」活过第一轮渲染（hashchange 二次触发不受影响）。 */
+let chordExPending = false;
+
 // 与 shell.html 里 .svstaff 那套规则同源，去掉前缀并把 currentColor 落到具体颜色；
 // .brk（直连谱号两端短横）与 .warn（违规红点）以前漏了，导出后会丢样式。
 // @WARN@ 按主题替换（深色 #ff8f7a / 浅色 #c0392b，同 var(--bad)）。
+// @WARM@ 是特征音染色符头的暖色（同 var(--warm)）：PR#1 补了 .brk/.warn，这里漏了 .hi。
 const EXPORT_CSS = [
   "svg{color:@FG@}",
   'text{font-family:Bravura,"Bravura Text",serif}',
@@ -5992,14 +6162,15 @@ const EXPORT_CSS = [
   ".brc{fill:currentColor;opacity:.95;font-size:40px}",
   ".brk{fill:none;stroke:currentColor;stroke-width:1.3;opacity:.9;stroke-linecap:round}",
   ".warn{fill:@WARN@;stroke:none}",
+  ".nh.hi{fill:@WARM@}",
   '.lab,.cnm{font-family:ui-sans-serif,system-ui,"Microsoft YaHei",sans-serif;text-anchor:middle;fill:currentColor;opacity:.72;font-size:11px}',
 ].join("");
 
 function exportPalette(){
   const light = (document.documentElement.dataset.theme || "dark") === "light";
   return light
-    ? { fg:"#14181f", bg:"#ffffff", warn:"#c0392b" }
-    : { fg:"#e9edf6", bg:"#14181e", warn:"#ff8f7a" };
+    ? { fg:"#14181f", bg:"#ffffff", warn:"#c0392b", warm:"#c46d13" }
+    : { fg:"#e9edf6", bg:"#14181e", warn:"#ff8f7a", warm:"#ffb86b" };
 }
 
 /* Bravura 以 base64 内嵌进导出文件：SVG-as-<img> 和别处打开的 .svg 都加载不了
@@ -6041,7 +6212,7 @@ async function staffSnapshot(svg, pal){
   const h = vb[3] || parseFloat(svg.getAttribute("height")) || 120;
   const W = w + EXPORT_PAD * 2, H = h + EXPORT_PAD * 2;
   const css = (fontCSS ? fontCSS : "")
-    + EXPORT_CSS.replace(/@FG@/g, pal.fg).replace(/@WARN@/g, pal.warn);
+    + EXPORT_CSS.replace(/@FG@/g, pal.fg).replace(/@WARN@/g, pal.warn).replace(/@WARM@/g, pal.warm);
   const m = typeof activeMode === "function" ? activeMode() : null;
   const t = typeof tonicObj === "function" ? tonicObj() : null;
   const what = (m ? m.cn : "谱面") + (t ? " · " + noteName(t.li, t.acc) : "");
@@ -6165,15 +6336,18 @@ function applyHash(){
   if(map.m && byId(map.m)){ state.A = map.m; hit = true; }
   const tn = parseInt(map.t, 10);
   if(isFinite(tn) && TONICS[tn]){ state.tone = tn; hit = true; }
-  if(map.v === "3" || map.v === "7"){ state.voicing = map.v; hit = true; }
+  // 走 store.set 才会持久化：这两个键不在 SESSION_KEYS 里，直接赋值刷新后会回旧值
+  if(map.v === "3" || map.v === "7"){ store.set("voicing", map.v); hit = true; }
   const oc = parseInt(map.o, 10);
-  if(isFinite(oc)){ state.oct = Math.max(-2, Math.min(2, oc)); hit = true; }
+  if(isFinite(oc)){ store.set("oct", Math.max(-2, Math.min(2, oc))); hit = true; }
 
   if(map.d2 || map.d){
     if(typeof deck !== "undefined"){
       let slots = null;
       if(map.d2){
-        try{ slots = urlDeckFromParam(JSON.parse(decodeURIComponent(map.d2)), byId); }catch(_){}
+        // 槽位级数 d 要按槽位音阶的实际音数收敛，否则七声 VII 级的链接切到五声就崩视图
+        const modeLen = id => { const m = byId(id || state.A); return m ? m.pcs.length : 0; };
+        try{ slots = urlDeckFromParam(JSON.parse(decodeURIComponent(map.d2)), byId, modeLen); }catch(_){}
       }
       if(!slots && map.d) slots = legacyDeckSlots(map.d);   // 老链接照旧能开
       if(slots){
@@ -6191,7 +6365,7 @@ function applyHash(){
   if(map.x){
     try{
       const ex = urlExFromParam(JSON.parse(decodeURIComponent(map.x)));
-      if(ex){ state.chordEx = ex; hit = true; }
+      if(ex){ state.chordEx = ex; chordExPending = true; hit = true; }
     }catch(_){}
   }
   hashLast = raw;
@@ -6413,7 +6587,7 @@ const BACKUP_VERSION = 1;
 const BACKUP_PREFIX = "mlab-";
 const BACKUP_MAX_BYTES = 4 * 1024 * 1024;
 const BACKUP_MAX_KEYS = 300;
-const APP_VERSION = "1.1.4";   // 构建时由 build.mjs 注入
+const APP_VERSION = "1.1.5";   // 构建时由 build.mjs 注入
 
 /* 当前所有应用键（进行台、设置、视图、会话都在里面） */
 function backupEntries(){
@@ -6451,6 +6625,27 @@ function backupPayload(appVersion){
   };
 }
 
+/* 进行台槽位里有自由文本（级数记号、和弦符号），导入后会被拼进 innerHTML 与 SVG 文本节点。
+   按分享链接同一套白名单清洗，防止备份 JSON 变成注入入口。解析不了就原样保留（渲染层另有转义兜底）。 */
+function sanitizeDeckValue(v){
+  if(typeof v !== "string" || typeof urlSafeText !== "function") return v;
+  try{
+    const d = JSON.parse(v);
+    const arr = Array.isArray(d) ? d : (d && Array.isArray(d.s) ? d.s : null);
+    if(!arr) return v;
+    const clean = s => {
+      if(!s || !s.ex || typeof s.ex !== "object") return s;
+      s.ex.roman = urlSafeText(s.ex.roman);
+      s.ex.symbol = urlSafeText(s.ex.symbol);
+      if(Array.isArray(s.ex.names)) s.ex.names = s.ex.names.map(x => urlSafeText(x, 12));
+      return s;
+    };
+    if(Array.isArray(d)) return JSON.stringify(arr.map(clean));
+    d.s = arr.map(clean);
+    return JSON.stringify(d);
+  }catch(_){ return v; }
+}
+
 /* 解析并校验；不认识的一律拒绝，不做"尽力而为"的猜测 */
 function parseBackup(text){
   let data;
@@ -6481,7 +6676,7 @@ function parseBackup(text){
     if(v !== null && typeof v !== "string") continue;
     chars += k.length + String(v == null ? "" : v).length;
     if(chars > BACKUP_MAX_BYTES) return { ok:false, reason:"备份体积超限" };
-    out[k] = v;
+    out[k] = (k === "mlab-deck") ? sanitizeDeckValue(v) : v;
   }
   return {
     ok:true,
@@ -6616,6 +6811,14 @@ function bindData(){
  */
 /* ---------- 5. 启动：全局事件 + 初始化 ---------- */
 
+/* 「播放和弦进行」的高亮定时器要能撤销：播放中点了别的播放按钮 / 和弦卡，
+   旧定时器不该继续改 state.chord 抢回选中态。 */
+let progTimers = [];
+function clearProgTimers(){
+  progTimers.forEach(t => clearTimeout(t));
+  progTimers = [];
+}
+
 /* 卡片区标题随音阶音数变化（七声写「七个」，其余写「六个 / 八个 / 十二个」） */
 function cardsTitleText(v){
   const m = activeMode(), n = m.pcs.length;
@@ -6697,6 +6900,7 @@ $("#selB").onchange = e => { store.set("B", e.target.value); renderAll(); };
 
 /* 播放音阶：走一遍 plan，再把同一份计划交给谱面做同步高亮 */
 function playScaleMarked(){
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   const o = withTune({ arp: $("#arp").checked });
   const plan = planScale(m, t, o);
@@ -6707,6 +6911,7 @@ function playScaleMarked(){
 $("#btnScale").onclick = playScaleMarked;
 
 $("#btnTonic").onclick = () => {
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   state.chord = 0;
   $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === 0));
@@ -6715,6 +6920,7 @@ $("#btnTonic").onclick = () => {
 };
 
 $("#btnProg").onclick = () => {
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   audio();
   /* 整条进行拼成一份计划一次排上：playEvents 每次都会清总线，
@@ -6727,27 +6933,32 @@ $("#btnProg").onclick = () => {
   }
   playEvents(plan, o.a4);
   for(let i = 0; i < m.pcs.length; i++){
-    setTimeout(() => {
+    progTimers.push(setTimeout(() => {
       state.chord = i;
       $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === i));
       renderChordStaff();
-    }, i * 620);
+    }, i * 620));
   }
 };
 
 $("#btnAB").onclick = () => {
-  const a = byId(state.A), b = byId(state.B), t = tonicObj();
+  clearProgTimers();
+  /* 跟 A/B 面板同一个口径（含偏音 / 变形），这里播的和面板写的必须是同一条音阶 */
+  const a = (typeof compareModeA === "function" ? compareModeA() : byId(state.A));
+  const b = byId(state.B), t = tonicObj();
   audio();
   /* A 和弦与 B 和弦同一条时间线：分两次 playEvents 会把 A 掐掉 */
   const o = withTune({});
-  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9 }))
-    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9 }))), o.a4);
+  // 带上 voiced，让开放/密集排列与转位对 A-B 对比同样生效
+  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9, voiced: true }))
+    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9, voiced: true }))), o.a4);
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));
   const onlyB = b.pcs.filter(p => !a.pcs.includes(p));
+  const base = 48 + (o.oct || 0) * 12;      // 差异音跟着全局八度开关，别和和弦本体差两个八度
   let w = 2.7;
-  onlyA.forEach((p, i) => { tone(48 + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
+  onlyA.forEach((p, i) => { tone(base + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
   w += onlyA.length * 0.16 + 0.25;
-  onlyB.forEach((p, i) => { tone(48 + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
+  onlyB.forEach((p, i) => { tone(base + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
 };
 
 $("#btnTheme").onclick = () => {

@@ -7,6 +7,8 @@
 let staffView = "scale";
 
 function renderStaff(){
+  // 谱面整块重写前先撤掉旧的高亮定时器：否则播放途中换调式，剩余音符会点亮新谱面的错位
+  if(typeof clearMarks === "function") clearMarks();
   const m = activeMode();
   const gs = staffView === "scale" ? staffScaleGroups() : staffChordGroups();
   const r = drawRows(gs, {slotW: staffView === "scale" ? 46 : 64, maxSlots: 8,
@@ -74,7 +76,7 @@ function markPlan(plan, giOf){
 function renderChordStaff(){
   if(state.chordEx){ renderOutsideStaff(state.chordEx); return; }
   const m = activeMode(), t = tonicObj(), sp = spell(m, t);
-  const i = state.chord || 0;
+  const i = clampDeg(state.chord || 0, m);   // 切到音数更少的调式后别让 sp[i] 越界
   const c = chordOf(m, i);
   const v = chordVoicing(m, i);
   const r0 = 60 + t.pc + m.pcs[i];
@@ -105,7 +107,9 @@ function renderChordStaff(){
 function renderOutsideStaff(ex){
   const m = activeMode(), t = tonicObj();
   const base = 60 + ex.root;
-  const li0 = LETTERS.indexOf(ex.names[0][0]);
+  // URL/备份里的 ex 可能没带拼写（names:[]），照 47-ui-deck 的口径兜底，别让谱面整轮崩
+  const li0 = (ex.names && ex.names[0] && LETTERS.indexOf(ex.names[0][0]) >= 0)
+    ? LETTERS.indexOf(ex.names[0][0]) : 0;
   const sh = staffShift(base, ex.ivs);
   const notes = ex.ivs.map(iv => spellTone(li0, base, base + iv + sh));
   const g = [{label: ex.roman, sub: ex.symbol, notes: notes}];

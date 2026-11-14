@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "gengoetori-palette-webview2",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "description": "幻歌鸟调色盘 · Gengoetori Palette 的 WebView2 外壳（.NET Framework 4.8，无需安装 SDK）",
   "author": "TouhouGakurin",

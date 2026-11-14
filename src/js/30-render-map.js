@@ -456,7 +456,7 @@ function centerMapOn(id, dur){
     const v = mapViewBox();
     $("#map").setAttribute("viewBox", `${v.x.toFixed(2)} ${v.y.toFixed(2)} ${v.w.toFixed(2)} ${v.h.toFixed(2)}`);
     if(k < 1) mapState.anim = requestAnimationFrame(step);
-    else { mapClamp(); paintMap(); }        // 动画结束补一次重画，刷新标记的 k
+    else { mapClamp(); mapApply(); paintMap(); }   // mapClamp 会改 cx/cy，末帧 viewBox 要跟着刷
   };
   mapState.anim = requestAnimationFrame(step);
 }

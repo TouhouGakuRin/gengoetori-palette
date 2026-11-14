@@ -101,8 +101,9 @@ function drawStaff(groups, opts){
     const body = paintChord(g, cx, {BOT: BOT, TOP: TOP, y: y, f: f});
     // mark：给每组包一个带序号的 <g>，播放时按序号高亮。不传就不包，保持基线不变。
     o += opts.mark ? `<g class="ch" data-gi="${gi}">${body}</g>` : body;
-    if(g.label) o += `<text class="lab" x="${cx}" y="15">${g.label}</text>`;
-    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${g.sub}</text>`;
+    // label/sub 可能来自 URL 或备份导入的借用和弦，拼进 SVG 文本节点前必须转义
+    if(g.label) o += `<text class="lab" x="${cx}" y="15">${escapeHtml(g.label)}</text>`;
+    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${escapeHtml(g.sub)}</text>`;
     // 声部进行违规：在标签上方点一个小红点（只有进行台的四声部会传 warn）
     if(g.warn) o += `<circle class="warn" cx="${cx}" cy="${(g.label ? 3 : 8)}" r="2.6"/>`;
   });
@@ -363,8 +364,9 @@ function drawStaffMetered(groups, opts){
     const i = firstPiece[gi];
     if(i === undefined) return;
     const cx = sh.cols[i].cx;
-    if(g.label) o += `<text class="lab" x="${cx}" y="15">${g.label}</text>`;
-    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${g.sub}</text>`;
+    // label/sub 可能来自 URL 或备份导入的借用和弦，拼进 SVG 文本节点前必须转义
+    if(g.label) o += `<text class="lab" x="${cx}" y="15">${escapeHtml(g.label)}</text>`;
+    if(g.sub) o += `<text class="cnm" x="${cx}" y="${H - 9}">${escapeHtml(g.sub)}</text>`;
     if(g.warn) o += `<circle class="warn" cx="${cx}" cy="${(g.label ? 3 : 8)}" r="2.6"/>`;
   });
 
@@ -389,7 +391,9 @@ function drawRows(groups, opts){
   }
   const W = Math.max(...parts.map(p => p.W));
   const H = yy - gap;
-  return {markup: `<g transform="scale(${K})">${body}</g>`, W: W * K, H: H * K, f: parts[0].f, cost: 0};
+  // 折行后把各行的临时记号代价累加，别让「另 N 处临时记号」提示恒为 0
+  return {markup: `<g transform="scale(${K})">${body}</g>`, W: W * K, H: H * K, f: parts[0].f,
+    cost: parts.reduce((s, p) => s + (p.cost || 0), 0)};
 }
 
 /* 一行放不下就把大谱表折成多行 —— 断点只落在小节线上（真正的乐谱绝不会从小节中间换行）。
@@ -419,7 +423,7 @@ function drawGrandSystems(tre, bas, opts, planT, planB, share){
   const pick = (plan, idx) => idx.map(i => {
     const it = plan.items[i];
     if(it.rest) return {dur: it.len, rest: true, notes: []};
-    return {dur: it.len, notes: it.g.notes, label: it.g.label, sub: it.g.sub};
+    return {dur: it.len, notes: it.g.notes, label: it.g.label, sub: it.g.sub, warn: it.g.warn};
   });
 
   const K = opts.scale || 1.6, gap = 24;

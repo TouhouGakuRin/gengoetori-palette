@@ -13,7 +13,12 @@ function renderDetail(env){
   const br = brightness(m);
 
   const stamp = m.id + "|" + t.pc + "|" + (state.voicing || "7");
-  if(stamp !== outsideStamp){ state.chordEx = null; outsideStamp = stamp; }
+  if(stamp !== outsideStamp){
+    // 首轮渲染的 stamp 必然变化，别把刚从 URL hash 解出来的借用和弦清掉
+    if(typeof chordExPending !== "undefined" && chordExPending) chordExPending = false;
+    else state.chordEx = null;
+    outsideStamp = stamp;
+  }
 
   $("#mTitle").innerHTML = `${m.cn}<small>${m.n} · 主音 ${noteName(t.li, t.acc)}</small>`;
 
@@ -25,18 +30,24 @@ function renderDetail(env){
     if(!isPen) po.innerHTML = "";          // 非五声：连 DOM 都不留，免得被 Tab 走到
     if(isPen){
       const b4 = state.b4 || 0, b7 = state.b7 || 0;
+      /* 五度叠置只对纯五声成立：挂上偏音是 6/7 声，纵合链上取相邻音会重复音高，
+         此时按钮留在原位但禁用（并说明已按三度叠置），不要像以前整组消失（AUD-L10）。 */
+      const qOK = m.pcs.length === 5;
+      const model = qOK && state.pentaChord === "quintal" ? "quintal" : "tertian";
       po.innerHTML = `<div class="pgrp"><span class="plab">旋宫</span>`
         + PENTA_NAMES.map((nm, i) => `<button data-pen="${PENTA_IDS[i]}" class="${PENTA_IDS[i] === state.A ? "on" : ""}">${nm}调式</button>`).join("")
         + `</div><div class="pgrp"><span class="plab">偏音 · 清角一侧</span>`
         + [[0, "无"], [5, "清角"], [6, "变徵"]].map(([v, nm]) => `<button data-b4="${v}" class="${v === b4 ? "on" : ""}">${nm}</button>`).join("")
         + `</div><div class="pgrp"><span class="plab">偏音 · 变宫一侧</span>`
         + [[0, "无"], [10, "闰"], [11, "变宫"]].map(([v, nm]) => `<button data-b7="${v}" class="${v === b7 ? "on" : ""}">${nm}</button>`).join("")
-        + (m.pcs.length === 5
-            ? `</div><div class="pgrp"><span class="plab">和弦构成</span>`
-              + [["tertian", "三度叠置"], ["quintal", "五度叠置"]].map(([v, nm]) =>
-                  `<button data-model="${v}" class="${v === (state.pentaChord || "tertian") ? "on" : ""}">${nm}</button>`).join("")
-              + `</div>`
-            : `</div>`);
+        + `</div><div class="pgrp"><span class="plab">和弦构成</span>`
+        + [["tertian", "三度叠置"], ["quintal", "五度叠置"]].map(([v, nm]) =>
+            `<button data-model="${v}" class="${v === model ? "on" : ""}"`
+            + (v === "quintal" && !qOK
+                ? ` disabled title="加偏音后是 ${m.pcs.length} 声；五度叠置只适用于纯五声，现在按三度叠置"`
+                : "")
+            + `>${nm}</button>`).join("")
+        + `</div>`;
     }
   }
 
@@ -118,6 +129,7 @@ function renderDetail(env){
   $("#cards").innerHTML = cards;
   $("#cards").querySelectorAll(".card").forEach(el => {
     el.onclick = () => {
+      if(typeof clearProgTimers === "function") clearProgTimers();   // 别让进行播放的定时器抢回选中态
       const i = +el.dataset.i;
       store.set("chord", i);
       state.chordEx = null;                       // 回到本位和弦，借来的那个取消选中

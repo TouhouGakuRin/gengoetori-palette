@@ -124,6 +124,9 @@ args.push(path.join(out, "AssemblyInfo.g.cs"));
 step("编译 Host.cs（版本 " + asmVer + "）");
 execFileSync(CSC, args, { stdio: "inherit" });
 
+// AssemblyInfo.g.cs 只是给编译器看的中间件（每次构建重写），不随包发给用户
+fs.rmSync(path.join(out, "AssemblyInfo.g.cs"), { force: true });
+
 // 4) 运行时依赖
 for (const f of ["Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll"]) {
   fs.copyFileSync(path.join(nupkgDir, f), path.join(out, f));

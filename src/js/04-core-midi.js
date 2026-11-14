@@ -6,7 +6,14 @@
 
 const TPQ = 480;
 
-function vlq(n){ const o = [n & 0x7f]; n >>= 7; while(n){ o.push((n & 0x7f) | 0x80); n >>= 7; } return o.reverse(); }
+function vlq(n){
+  // 负数算术右移恒为 -1，会让 while 永不结束；导出的 delta-time 不该为负，入口先兜住
+  n = Math.floor(Number(n));
+  if(!isFinite(n) || n < 0) n = 0;
+  const o = [n & 0x7f]; n >>= 7;
+  while(n){ o.push((n & 0x7f) | 0x80); n >>= 7; }
+  return o.reverse();
+}
 
 function buildMidi(notes, bpm, name){
   const evs = [];

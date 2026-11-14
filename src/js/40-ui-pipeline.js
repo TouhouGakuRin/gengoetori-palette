@@ -11,6 +11,7 @@ const store = createStore({ b4:0, b7:0, pentaChord:"tertian",
   tuning: "et", drone: false, timbre: "tri", accent: "ice",
 });
 const state = store.all();
+let droneResumeBound = false;   // 重载后「drone=开」等首个用户手势恢复，避免自动播放策略拦截
 
 const $ = s => document.querySelector(s);
 const byId = id => MODES.find(m => m.id === id);
@@ -67,9 +68,23 @@ function syncAudioState(){
   const t = tonicObj();
   setTuning(state.tuning || "et", t.pc);
   if(typeof setTimbre === "function") setTimbre(state.timbre || "tri");
-  if(typeof droneIsOn === "function" && droneIsOn()){
-    if(state.drone) droneOn(t.pc, state.a4);
-    else droneOff();
+  if(typeof droneIsOn === "function"){
+    if(state.drone){
+      if(droneIsOn()) droneOn(t.pc, state.a4);
+      else if(typeof document !== "undefined" && !droneResumeBound){
+        /* 重载后 DRONE 是空的：按钮显示「开」却永远静音。注册一次性手势监听，
+           首个点击/按键落在手势内才创建 AudioContext 并把 drone 接回来。 */
+        droneResumeBound = true;
+        const wake = () => {
+          document.removeEventListener("pointerdown", wake);
+          document.removeEventListener("keydown", wake);
+          droneResumeBound = false;
+          if(state.drone && typeof droneOn === "function") droneOn(tonicObj().pc, state.a4);
+        };
+        document.addEventListener("pointerdown", wake);
+        document.addEventListener("keydown", wake);
+      }
+    }else if(droneIsOn()) droneOff();
   }
 }
 
@@ -99,7 +114,15 @@ function renderAll(){
 /* ---------- 换当前调式的唯一入口 ---------- */
 // 全站唯一的“换当前调式”入口：重渲染 + 地图把新调式移到画面中心
 function switchMode(id){
-  if(!byId(id)) return;
+  const m = byId(id);
+  if(!m) return;
+  // 选中级数可能来自音数更多的音阶（如半音阶 VII），不收敛会让和弦谱视图整块崩掉
+  state.chord = clampDeg(state.chord || 0, m);
+  /* 槽位里的级数同理：七声 VI 槽在工作台上选中后切五声，s.d=5 对 5 声越界，
+     deck 视图会整块抛错。跟全局音阶走的槽（s.m 为空）在这里一并收敛。 */
+  if(typeof deck !== "undefined" && deck && deck.slots){
+    for(const s of deck.slots) if(s && !s.m) s.d = clampDeg(s.d, m);
+  }
   store.set("A", id);   // 走仓库才会持久化（以前重启就丢）
   renderAll();
   if(mapState.pos) centerMapOn(id);

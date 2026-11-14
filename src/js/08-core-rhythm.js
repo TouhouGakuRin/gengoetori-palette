@@ -30,10 +30,12 @@ function noteValueOf(beats){
   return {v: 1, n: "quarter", dots: 0};
 }
 
-const DUR_CN = {1: "四分音符", 2: "二分音符", 3: "附点二分", 4: "全音符"};
+const DUR_CN = {1: "四分音符", 2: "二分音符", 3: "附点二分", 4: "全音符",
+  6: "附点全音符", 8: "二全音符"};
 function durationLabel(beats){
   const v = Math.round(beats);
-  return `${v} 拍 · ${DUR_CN[v] || "四分音符"}`;
+  // 5/7/9+ 拍没有单音符时值，兜底别再写「四分音符」误导
+  return `${v} 拍 · ${DUR_CN[v] || "长音值"}`;
 }
 
 /* 把一段 [pos, pos+len) 切成「能记谱」的片段。三条规则（记谱通例）：

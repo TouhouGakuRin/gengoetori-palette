@@ -29,8 +29,9 @@ function playQuiz(){
   /* 音阶 + 主和弦拼成一份计划一次排上：playEvents 每次都会清总线，
      分两次调用会把先排的音阶整体掐掉（只能听到最后的主和弦）。 */
   const o = withTune({});
+  // 第三个参数把纯律参照主音换成测验自己的随机主音，不改全局（否则纯律下音准全错）
   playEvents(planScale(quiz.m, t, o)
-    .concat(planDegree(quiz.m, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0, vel: 0.9}))), o.a4);
+    .concat(planDegree(quiz.m, 0, t, Object.assign({}, o, {when: 2.1, dur: 1.0, vel: 0.9}))), o.a4, t.pc);
 }
 
 function renderQuiz(){

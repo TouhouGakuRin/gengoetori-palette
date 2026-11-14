@@ -4,6 +4,14 @@
  */
 /* ---------- 5. 启动：全局事件 + 初始化 ---------- */
 
+/* 「播放和弦进行」的高亮定时器要能撤销：播放中点了别的播放按钮 / 和弦卡，
+   旧定时器不该继续改 state.chord 抢回选中态。 */
+let progTimers = [];
+function clearProgTimers(){
+  progTimers.forEach(t => clearTimeout(t));
+  progTimers = [];
+}
+
 /* 卡片区标题随音阶音数变化（七声写「七个」，其余写「六个 / 八个 / 十二个」） */
 function cardsTitleText(v){
   const m = activeMode(), n = m.pcs.length;
@@ -85,6 +93,7 @@ $("#selB").onchange = e => { store.set("B", e.target.value); renderAll(); };
 
 /* 播放音阶：走一遍 plan，再把同一份计划交给谱面做同步高亮 */
 function playScaleMarked(){
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   const o = withTune({ arp: $("#arp").checked });
   const plan = planScale(m, t, o);
@@ -95,6 +104,7 @@ function playScaleMarked(){
 $("#btnScale").onclick = playScaleMarked;
 
 $("#btnTonic").onclick = () => {
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   state.chord = 0;
   $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === 0));
@@ -103,6 +113,7 @@ $("#btnTonic").onclick = () => {
 };
 
 $("#btnProg").onclick = () => {
+  clearProgTimers();
   const m = activeMode(), t = tonicObj();
   audio();
   /* 整条进行拼成一份计划一次排上：playEvents 每次都会清总线，
@@ -115,27 +126,32 @@ $("#btnProg").onclick = () => {
   }
   playEvents(plan, o.a4);
   for(let i = 0; i < m.pcs.length; i++){
-    setTimeout(() => {
+    progTimers.push(setTimeout(() => {
       state.chord = i;
       $("#cards").querySelectorAll(".card").forEach(x => x.classList.toggle("sel", +x.dataset.i === i));
       renderChordStaff();
-    }, i * 620);
+    }, i * 620));
   }
 };
 
 $("#btnAB").onclick = () => {
-  const a = byId(state.A), b = byId(state.B), t = tonicObj();
+  clearProgTimers();
+  /* 跟 A/B 面板同一个口径（含偏音 / 变形），这里播的和面板写的必须是同一条音阶 */
+  const a = (typeof compareModeA === "function" ? compareModeA() : byId(state.A));
+  const b = byId(state.B), t = tonicObj();
   audio();
   /* A 和弦与 B 和弦同一条时间线：分两次 playEvents 会把 A 掐掉 */
   const o = withTune({});
-  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9 }))
-    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9 }))), o.a4);
+  // 带上 voiced，让开放/密集排列与转位对 A-B 对比同样生效
+  playEvents(planDegree(a, 0, t, Object.assign({}, o, { dur: 0.9, vel: 0.9, voiced: true }))
+    .concat(planDegree(b, 0, t, Object.assign({}, o, { when: 1.3, dur: 0.9, vel: 0.9, voiced: true }))), o.a4);
   const onlyA = a.pcs.filter(p => !b.pcs.includes(p));
   const onlyB = b.pcs.filter(p => !a.pcs.includes(p));
+  const base = 48 + (o.oct || 0) * 12;      // 差异音跟着全局八度开关，别和和弦本体差两个八度
   let w = 2.7;
-  onlyA.forEach((p, i) => { tone(48 + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
+  onlyA.forEach((p, i) => { tone(base + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
   w += onlyA.length * 0.16 + 0.25;
-  onlyB.forEach((p, i) => { tone(48 + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
+  onlyB.forEach((p, i) => { tone(base + ((t.pc + p) % 12), w + i * 0.16, 0.5, 1); });
 };
 
 $("#btnTheme").onclick = () => {
